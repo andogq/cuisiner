@@ -1,0 +1,17 @@
+[package]
+name = "cuisiner"
+version = "0.1.0"
+edition = "2024"
+
+[workspace]
+resolver = "2"
+members = ["cuisiner_derive"]
+
+[workspace.dependencies]
+cuisiner = { path = "." }
+cuisiner_derive = { path = "cuisiner_derive" }
+
+[dependencies]
+thiserror = "2.0.12"
+zerocopy = { version = "0.8.24", features = ["derive", "std"] }
+cuisiner_derive = { workspace = true }

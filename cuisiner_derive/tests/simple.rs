@@ -1,4 +1,4 @@
-use cuisiner::Cuisiner;
+use cuisiner::{BigEndian, Cuisiner};
 
 #[derive(Clone, Cuisiner, Debug, PartialEq, Eq)]
 struct MyStruct {
@@ -20,10 +20,10 @@ fn deserialse() {
         s: S2 { thing: 4321 },
     };
 
-    let b = s.clone().to_bytes().unwrap();
+    let b = s.clone().to_bytes::<BigEndian>().unwrap();
     dbg!(&b);
 
-    let s2 = MyStruct::from_bytes(&b).unwrap();
+    let s2 = MyStruct::from_bytes::<BigEndian>(&b).unwrap();
     dbg!(&s2);
 
     assert_eq!(s, s2);

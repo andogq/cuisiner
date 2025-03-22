@@ -15,27 +15,24 @@ pub enum CuisinerError {
     SizeError,
 }
 
-pub trait Cuisiner<B>: Sized
-where
-    B: ByteOrder,
-{
-    type Raw: FromBytes + IntoBytes + Immutable;
+pub trait Cuisiner: Sized {
+    type Raw<B: ByteOrder>: FromBytes + IntoBytes + Immutable;
 
     /// Attempt to convert this value from a raw value.
-    fn try_from_raw(raw: Self::Raw) -> Result<Self, CuisinerError>;
+    fn try_from_raw<B: ByteOrder>(raw: Self::Raw<B>) -> Result<Self, CuisinerError>;
 
     /// Attempt to convert this value into the raw value.
-    fn try_to_raw(self) -> Result<Self::Raw, CuisinerError>;
+    fn try_to_raw<B: ByteOrder>(self) -> Result<Self::Raw<B>, CuisinerError>;
 
     /// Read the provided bytes and attempt to parse out the type.
-    fn from_bytes(bytes: &[u8]) -> Result<Self, CuisinerError> {
-        let raw = Self::Raw::read_from_bytes(bytes).map_err(|_| CuisinerError::SizeError)?;
+    fn from_bytes<B: ByteOrder>(bytes: &[u8]) -> Result<Self, CuisinerError> {
+        let raw = Self::Raw::<B>::read_from_bytes(bytes).map_err(|_| CuisinerError::SizeError)?;
         Self::try_from_raw(raw)
     }
 
     /// Convert a value to it's raw representation.
-    fn to_bytes(self) -> Result<Vec<u8>, CuisinerError> {
-        Ok(self.try_to_raw()?.as_bytes().to_vec())
+    fn to_bytes<B: ByteOrder>(self) -> Result<Vec<u8>, CuisinerError> {
+        Ok(self.try_to_raw::<B>()?.as_bytes().to_vec())
     }
 }
 
@@ -50,25 +47,26 @@ mod sample {
     }
 
     #[derive(zerocopy::FromBytes, zerocopy::IntoBytes, zerocopy::Immutable)]
-    struct MyStructRaw {
-        a_field: <u32 as Cuisiner<zerocopy::BigEndian>>::Raw,
-        another: <i64 as Cuisiner<zerocopy::BigEndian>>::Raw,
+    #[repr(C)]
+    struct MyStructRaw<B: ByteOrder> {
+        a_field: <u32 as Cuisiner>::Raw<B>,
+        another: <i64 as Cuisiner>::Raw<B>,
     }
 
-    impl Cuisiner<zerocopy::BigEndian> for MyStruct {
-        type Raw = MyStructRaw;
+    impl Cuisiner for MyStruct {
+        type Raw<B: ByteOrder> = MyStructRaw<B>;
 
-        fn try_from_raw(raw: MyStructRaw) -> Result<Self, CuisinerError> {
+        fn try_from_raw<B: ByteOrder>(raw: Self::Raw<B>) -> Result<Self, CuisinerError> {
             Ok(Self {
-                a_field: <_ as Cuisiner<zerocopy::BigEndian>>::try_from_raw(raw.a_field)?,
-                another: <_ as Cuisiner<zerocopy::BigEndian>>::try_from_raw(raw.another)?,
+                a_field: <_ as Cuisiner>::try_from_raw(raw.a_field)?,
+                another: <_ as Cuisiner>::try_from_raw(raw.another)?,
             })
         }
 
-        fn try_to_raw(self) -> Result<MyStructRaw, CuisinerError> {
+        fn try_to_raw<B: ByteOrder>(self) -> Result<Self::Raw<B>, CuisinerError> {
             Ok(MyStructRaw {
-                a_field: <_ as Cuisiner<zerocopy::BigEndian>>::try_to_raw(self.a_field)?,
-                another: <_ as Cuisiner<zerocopy::BigEndian>>::try_to_raw(self.another)?,
+                a_field: <_ as Cuisiner>::try_to_raw(self.a_field)?,
+                another: <_ as Cuisiner>::try_to_raw(self.another)?,
             })
         }
     }

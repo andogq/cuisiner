@@ -4,7 +4,6 @@ mod lower;
 mod parse;
 
 use proc_macro2::TokenStream;
-use strum::EnumString;
 use syn::{DeriveInput, Error, Ident, Type};
 
 use self::{analyse::*, codegen::*, lower::*, parse::*};
@@ -29,20 +28,6 @@ fn derive_cuisiner_inner(derive_input: DeriveInput) -> Result<TokenStream, Error
     let model = analyse(ast)?;
     let ir = lower(model)?;
     codegen(ir)
-}
-
-#[derive(Clone, Debug, Default, Eq, EnumString, PartialEq)]
-#[strum(serialize_all = "snake_case")]
-#[allow(
-    clippy::enum_variant_names,
-    reason = "`Endian` suffix desired for serialisation"
-)]
-enum Endian {
-    #[default]
-    BigEndian,
-    LittleEndian,
-    NetworkEndian,
-    NativeEndian,
 }
 
 /// All availble field representations. Similar to [`syn::Fields`].

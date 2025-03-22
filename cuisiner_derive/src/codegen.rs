@@ -2,24 +2,16 @@ use proc_macro2::TokenStream;
 use quote::quote;
 use syn::Error;
 
-use crate::{Endian, Fields, Ir};
+use crate::{Fields, Ir};
 
 pub fn codegen(ir: Ir) -> Result<TokenStream, Error> {
     let Ir {
         crate_name,
         base_ident,
         raw_ident,
-        endian,
         raw_derives,
         fields,
     } = ir;
-
-    let endian = match endian {
-        Endian::BigEndian => quote! { #crate_name::BigEndian },
-        Endian::LittleEndian => quote! { #crate_name::LittleEndian },
-        Endian::NetworkEndian => quote! { #crate_name::NetworkEndian },
-        Endian::NativeEndian => quote! { #crate_name::NativeEndian },
-    };
 
     let (field_definitions, from_raws, to_raws) = match fields {
         Fields::Named(fields) => {
@@ -27,13 +19,13 @@ pub fn codegen(ir: Ir) -> Result<TokenStream, Error> {
 
             (
                 quote! {
-                    { #(#names: <#tys as #crate_name::Cuisiner<#endian>>::Raw),* }
+                    { #(#names: <#tys as #crate_name::Cuisiner>::Raw::<B>),* }
                 },
                 quote! {
-                    { #(#names: <#tys as #crate_name::Cuisiner<#endian>>::try_from_raw(raw.#names)?),* }
+                    { #(#names: <#tys as #crate_name::Cuisiner>::try_from_raw(raw.#names)?),* }
                 },
                 quote! {
-                    { #(#names: <#tys as #crate_name::Cuisiner<#endian>>::try_to_raw(self.#names)?),* }
+                    { #(#names: <#tys as #crate_name::Cuisiner>::try_to_raw(self.#names)?),* }
                 },
             )
         }
@@ -45,10 +37,10 @@ pub fn codegen(ir: Ir) -> Result<TokenStream, Error> {
                     (#(#tys),*);
                 },
                 quote! {
-                    (#(<#tys as #crate_name::Cuisiner<#endian>>::try_from_raw(raw.#names)?),*);
+                    (#(<#tys as #crate_name::Cuisiner>::try_from_raw(raw.#names)?),*);
                 },
                 quote! {
-                    (#(<#tys as #crate_name::Cuisiner<#endian>>::try_to_raw(self.#names)?),*);
+                    (#(<#tys as #crate_name::Cuisiner>::try_to_raw(self.#names)?),*);
                 },
             )
         }
@@ -62,16 +54,16 @@ pub fn codegen(ir: Ir) -> Result<TokenStream, Error> {
         #[derive(#(#raw_derives),*)]
         #[repr(C)]
         #[zerocopy(crate = #zerocopy_crate)]
-        struct #raw_ident #field_definitions
+        struct #raw_ident<B: #crate_name::zerocopy::ByteOrder> #field_definitions
 
-        impl #crate_name::Cuisiner<#endian> for #base_ident {
-            type Raw = #raw_ident;
+        impl #crate_name::Cuisiner for #base_ident {
+            type Raw<B: #crate_name::zerocopy::ByteOrder> = #raw_ident<B>;
 
-            fn try_from_raw(raw: Self::Raw) -> ::core::result::Result<Self, #crate_name::CuisinerError> {
+            fn try_from_raw<B: #crate_name::zerocopy::ByteOrder>(raw: Self::Raw<B>) -> ::core::result::Result<Self, #crate_name::CuisinerError> {
                 Ok(Self #from_raws)
             }
 
-            fn try_to_raw(self) -> ::core::result::Result<Self::Raw, #crate_name::CuisinerError> {
+            fn try_to_raw<B: #crate_name::zerocopy::ByteOrder>(self) -> ::core::result::Result<Self::Raw<B>, #crate_name::CuisinerError> {
                 Ok(Self::Raw #to_raws)
             }
         }

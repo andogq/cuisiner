@@ -1,18 +1,15 @@
-use std::str::FromStr;
-
 use proc_macro2::Span;
 use syn::{Attribute, Error, Ident, ItemStruct, Meta};
 
-use crate::{Endian, Fields};
+use crate::Fields;
 
 /// Analyse the struct, and produce a model for future usage.
 pub fn analyse(item_struct: ItemStruct) -> Result<DeriveModel, Error> {
     // Parse the attributes to pull out the config.
-    let config = DeriveConfig::try_from(item_struct.attrs.as_slice())?;
+    let _config = DeriveConfig::try_from(item_struct.attrs.as_slice())?;
 
     Ok(DeriveModel {
         name: item_struct.ident.clone(),
-        endian: config.endian,
         fields: Fields::from(&item_struct.fields),
     })
 }
@@ -22,17 +19,13 @@ pub fn analyse(item_struct: ItemStruct) -> Result<DeriveModel, Error> {
 pub struct DeriveModel {
     /// Original name of the struct.
     pub name: Ident,
-    /// The configured endianness to generate the raw struct with.
-    pub endian: Endian,
     /// Collection of fields present in the original struct.
     pub fields: Fields,
 }
 
 /// Configuration provided via attributes.
 #[derive(Clone, Default)]
-struct DeriveConfig {
-    endian: Endian,
-}
+struct DeriveConfig {}
 
 impl TryFrom<&[Attribute]> for DeriveConfig {
     type Error = Error;
@@ -41,7 +34,7 @@ impl TryFrom<&[Attribute]> for DeriveConfig {
         // Search for relevant attributes.
         let mut attrs = attrs.iter().filter(|attr| attr.path().is_ident("cuisiner"));
 
-        let mut config = Self::default();
+        let config = Self::default();
 
         let Some(attr) = attrs.next() else {
             // No attributes provided.
@@ -58,26 +51,18 @@ impl TryFrom<&[Attribute]> for DeriveConfig {
 
         match &attr.meta {
             // Accept attibute with no arguments, although it's useless.
-            Meta::Path(_) => {},
+            Meta::Path(_) => {}
             // Parse out arguments from list.
             Meta::List(_) => attr.parse_nested_meta(|meta| {
-                // Attempt to read the endianness attribute.
-                if let Some(endian) = meta
-                    .path
-                    .get_ident()
-                    .and_then(|ident| Endian::from_str(&ident.to_string()).ok())
-                {
-                    config.endian = endian;
-
-                    return Ok(());
-                }
-
-                Err(Error::new_spanned(meta.path, "unknown attribute argument, expected endianness (`big_endian`, `little_endian`, etc)"))
+                Err(Error::new_spanned(meta.path, "unknown attribute argument"))
             })?,
             // Reject all other formats
             _ => {
-                return Err(Error::new_spanned(attr, "attribute must be in list format (eg `#[cuisiner(argument)]`)"));
-            },
+                return Err(Error::new_spanned(
+                    attr,
+                    "attribute must be in list format (eg `#[cuisiner(argument)]`)",
+                ));
+            }
         }
 
         Ok(config)
@@ -93,13 +78,11 @@ mod test {
     fn test_analyse(
         s: ItemStruct,
         expected_name: impl AsRef<str>,
-        expected_endian: Endian,
         expected_field_count: Option<usize>,
     ) {
         let model = analyse(s).unwrap();
 
         assert_eq!(model.name, expected_name.as_ref());
-        assert_eq!(model.endian, expected_endian);
         assert_eq!(
             match model.fields {
                 Fields::Named(fields) => Some(fields.len()),
@@ -117,7 +100,6 @@ mod test {
                 struct MyStruct;
             },
             "MyStruct",
-            Endian::default(),
             None,
         );
     }
@@ -129,7 +111,6 @@ mod test {
                 struct MyStruct(u32);
             },
             "MyStruct",
-            Endian::default(),
             Some(1),
         );
     }
@@ -144,48 +125,15 @@ mod test {
                 }
             },
             "MyStruct",
-            Endian::default(),
             Some(2),
         );
     }
 
     #[test]
-    fn analyse_valid_struct_with_empty_attribute() {
-        test_analyse(
-            parse_quote! {
-                #[cuisiner]
-                struct MyStruct {
-                    a: u32,
-                    b: bool,
-                }
-            },
-            "MyStruct",
-            Endian::default(),
-            Some(2),
-        );
-    }
-
-    #[test]
-    fn analyse_valid_struct_with_endian() {
-        test_analyse(
-            parse_quote! {
-                #[cuisiner(little_endian)]
-                struct MyStruct {
-                    a: u32,
-                    b: bool,
-                }
-            },
-            "MyStruct",
-            Endian::LittleEndian,
-            Some(2),
-        );
-    }
-
-    #[test]
-    fn invalid_endian() {
+    fn invalid_attribute() {
         assert!(
             analyse(parse_quote! {
-                #[cuisiner(some_endian)]
+                #[cuisiner(some_attribute)]
                 struct MyStruct {
                     a: u32,
                 }
@@ -199,53 +147,33 @@ mod test {
 
         use super::*;
 
-        fn test_config(attrs: &[Attribute], expected_endian: Endian) {
-            let config = DeriveConfig::try_from(attrs).unwrap();
-
-            assert_eq!(config.endian, expected_endian);
+        fn test_config(attrs: &[Attribute]) {
+            let _config = DeriveConfig::try_from(attrs).unwrap();
         }
 
         #[test]
         fn from_empty_attributes() {
-            test_config(&[], Endian::default());
+            test_config(&[]);
         }
 
         #[test]
         fn single_attribute_path() {
-            test_config(&[parse_quote!(#[cuisiner])], Endian::default());
+            test_config(&[parse_quote!(#[cuisiner])]);
         }
 
         #[test]
         fn single_attribute_empty_list() {
-            test_config(&[parse_quote!(#[cuisiner()])], Endian::default());
-        }
-
-        #[test]
-        fn single_attribute_valid_endian() {
-            test_config(
-                &[parse_quote!(#[cuisiner(little_endian)])],
-                Endian::LittleEndian,
-            );
+            test_config(&[parse_quote!(#[cuisiner()])]);
         }
 
         #[test]
         fn extra_attributes() {
-            test_config(
-                &[
-                    parse_quote!(#[repr(C)]),
-                    parse_quote!(#[some = attribute]),
-                    parse_quote!(#[cuisiner(little_endian)]),
-                ],
-                Endian::LittleEndian,
-            );
+            test_config(&[parse_quote!(#[repr(C)]), parse_quote!(#[some = attribute])]);
         }
 
         #[test]
         fn only_extra_attributes() {
-            test_config(
-                &[parse_quote!(#[repr(C)]), parse_quote!(#[some = attribute])],
-                Endian::default(),
-            );
+            test_config(&[parse_quote!(#[repr(C)]), parse_quote!(#[some = attribute])]);
         }
 
         #[test]
@@ -253,7 +181,7 @@ mod test {
             assert!(
                 DeriveConfig::try_from(&[
                     parse_quote!(#[cuisiner]),
-                    parse_quote!(#[cuisiner(big_endian)]),
+                    parse_quote!(#[cuisiner(another_attribute)]),
                 ] as &[Attribute])
                 .is_err()
             );
@@ -262,8 +190,10 @@ mod test {
         #[test]
         fn unknown_attribute_argument() {
             assert!(
-                DeriveConfig::try_from(&[parse_quote!(#[cuisiner(some_endian)]),] as &[Attribute])
-                    .is_err()
+                DeriveConfig::try_from(
+                    &[parse_quote!(#[cuisiner(another_attribute)]),] as &[Attribute]
+                )
+                .is_err()
             );
         }
     }

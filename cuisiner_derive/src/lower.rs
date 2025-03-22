@@ -1,7 +1,7 @@
 use proc_macro2::Span;
 use syn::{Error, Ident, Path, parse_quote};
 
-use crate::{DeriveModel, Endian, Fields};
+use crate::{DeriveModel, Fields};
 
 /// From the provided [`DeriveModel`], generate an [`Ir`] representing it.
 pub fn lower(model: DeriveModel) -> Result<Ir, Error> {
@@ -10,11 +10,11 @@ pub fn lower(model: DeriveModel) -> Result<Ir, Error> {
     Ok(Ir {
         base_ident: model.name.clone(),
         raw_ident: Ident::new(&format!("{}Raw", model.name), Span::call_site()),
-        endian: model.endian.clone(),
         raw_derives: vec![
             parse_quote!(#crate_name::zerocopy::FromBytes),
             parse_quote!(#crate_name::zerocopy::IntoBytes),
             parse_quote!(#crate_name::zerocopy::Immutable),
+            parse_quote!(#crate_name::zerocopy::Unaligned),
         ],
         fields: model.fields.clone(),
         crate_name,
@@ -29,8 +29,6 @@ pub struct Ir {
     pub base_ident: Ident,
     /// Identifier of the raw struct.
     pub raw_ident: Ident,
-    /// Endian configuration.
-    pub endian: Endian,
     /// Derives to be added to the raw struct.
     pub raw_derives: Vec<Path>,
     /// Fields present in the original struct.
@@ -52,7 +50,6 @@ mod test {
         test_ir(
             DeriveModel {
                 name: Ident::new("MyStruct", Span::call_site()),
-                endian: Endian::BigEndian,
                 fields: Fields::Named(vec![(parse_quote!(a), parse_quote!(u64))]),
             },
             "MyStructRaw",

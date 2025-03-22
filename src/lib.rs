@@ -1,10 +1,10 @@
 mod implementations;
 
 use thiserror::Error;
-use zerocopy::{ByteOrder, FromBytes, Immutable, IntoBytes};
+use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 pub use cuisiner_derive::Cuisiner;
-pub use zerocopy::{self, BigEndian, LittleEndian, NativeEndian, NetworkEndian};
+pub use zerocopy::{self, BigEndian, ByteOrder, LittleEndian, NativeEndian, NetworkEndian};
 
 #[derive(Debug, Error)]
 pub enum CuisinerError {

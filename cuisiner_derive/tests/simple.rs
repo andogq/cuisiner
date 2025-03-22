@@ -20,10 +20,10 @@ fn deserialse() {
         s: S2 { thing: 4321 },
     };
 
-    let b = s.clone().to_bytes();
+    let b = s.clone().to_bytes().unwrap();
     dbg!(&b);
 
-    let s2 = MyStruct::from_bytes(&b);
+    let s2 = MyStruct::from_bytes(&b).unwrap();
     dbg!(&s2);
 
     assert_eq!(s, s2);

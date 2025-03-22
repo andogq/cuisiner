@@ -10,6 +10,9 @@ pub use zerocopy::{self, BigEndian, LittleEndian, NativeEndian, NetworkEndian};
 pub enum CuisinerError {
     #[error("zero encountered in an unexpected location")]
     Zero,
+
+    #[error("incorrect buffer size for serialising or deserialising")]
+    SizeError,
 }
 
 pub trait Cuisiner<B>: Sized
@@ -25,13 +28,14 @@ where
     fn try_to_raw(self) -> Result<Self::Raw, CuisinerError>;
 
     /// Read the provided bytes and attempt to parse out the type.
-    fn from_bytes(bytes: &[u8]) -> Self {
-        Self::try_from_raw(Self::Raw::read_from_bytes(bytes).unwrap()).unwrap()
+    fn from_bytes(bytes: &[u8]) -> Result<Self, CuisinerError> {
+        let raw = Self::Raw::read_from_bytes(bytes).map_err(|_| CuisinerError::SizeError)?;
+        Self::try_from_raw(raw)
     }
 
     /// Convert a value to it's raw representation.
-    fn to_bytes(self) -> Vec<u8> {
-        self.try_to_raw().unwrap().as_bytes().to_vec()
+    fn to_bytes(self) -> Result<Vec<u8>, CuisinerError> {
+        Ok(self.try_to_raw()?.as_bytes().to_vec())
     }
 }
 

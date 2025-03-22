@@ -1,23 +1,23 @@
+use crate::{ByteOrder, Cuisiner, CuisinerError};
+
+mod array;
 mod number;
 
-/// Implement [`crate::Cuisiner`] for a [`zerocopy`] type.
-#[macro_export]
-macro_rules! impl_zerocopy {
-    ($ty:ty: $raw:ty) => {
-        impl $crate::Cuisiner for $ty {
-            type Raw<B: $crate::ByteOrder> = $raw;
+macro_rules! impl_identity {
+    ($ty:ty) => {
+        impl Cuisiner for $ty {
+            type Raw<B: ByteOrder> = $ty;
 
-            fn try_from_raw<B: $crate::ByteOrder>(
-                raw: Self::Raw<B>,
-            ) -> Result<Self, $crate::CuisinerError> {
-                Ok(raw.get())
+            fn try_from_raw<B: ByteOrder>(raw: Self::Raw<B>) -> Result<Self, CuisinerError> {
+                Ok(raw)
             }
 
-            fn try_to_raw<B: $crate::ByteOrder>(
-                self,
-            ) -> Result<Self::Raw<B>, $crate::CuisinerError> {
-                Ok(Self::Raw::<B>::from(self))
+            fn try_to_raw<B: ByteOrder>(self) -> Result<Self::Raw<B>, CuisinerError> {
+                Ok(self)
             }
         }
     };
 }
+
+impl_identity!(());
+impl_identity!(u8);

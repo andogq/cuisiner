@@ -4,6 +4,7 @@ use cuisiner::{ByteBoolean, ByteOrder, ConstU8, Cuisiner, CuisinerError, Reserve
 use zerocopy::{U16, U32};
 
 #[derive(Clone, Cuisiner, Debug)]
+#[cuisiner(assert_size = 100)]
 struct SqliteHeader {
     header_string: HeaderString,
     page_size: PageSize,

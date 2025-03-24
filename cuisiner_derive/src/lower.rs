@@ -10,7 +10,10 @@ pub fn lower(model: DeriveModel) -> Result<Ir, Error> {
     Ok(Ir {
         base_ident: model.name.clone(),
         item: match model.item {
-            DeriveModelItem::Struct { fields } => ItemIr::Struct {
+            DeriveModelItem::Struct {
+                fields,
+                assert_size,
+            } => ItemIr::Struct {
                 fields,
                 raw_ident: Ident::new(&format!("___Cuisiner{}Raw", model.name), Span::call_site()),
                 raw_derives: vec![
@@ -19,6 +22,7 @@ pub fn lower(model: DeriveModel) -> Result<Ir, Error> {
                     parse_quote!(#crate_name::zerocopy::Immutable),
                     parse_quote!(#crate_name::zerocopy::Unaligned),
                 ],
+                assert_size,
             },
             DeriveModelItem::Enum { variants, repr } => ItemIr::Enum { repr, variants },
         },
@@ -46,6 +50,8 @@ pub enum ItemIr {
         raw_ident: Ident,
         /// Derives to be added to the raw struct.
         raw_derives: Vec<Path>,
+        /// Size to assert in the output.
+        assert_size: Option<usize>,
     },
     /// Enum IR.
     Enum {
@@ -74,6 +80,7 @@ mod test {
                 name: Ident::new("MyStruct", Span::call_site()),
                 item: DeriveModelItem::Struct {
                     fields: Fields::Named(vec![(parse_quote!(a), parse_quote!(u64))]),
+                    assert_size: None,
                 },
             },
             "___CuisinerMyStructRaw",

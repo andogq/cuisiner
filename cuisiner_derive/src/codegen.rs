@@ -19,6 +19,7 @@ pub fn codegen(ir: Ir) -> Result<TokenStream, Error> {
             fields,
             raw_ident,
             raw_derives,
+            assert_size,
         } => {
             let (field_definitions, from_raws, to_raws) = match fields {
                 Fields::Named(fields) => {
@@ -54,6 +55,15 @@ pub fn codegen(ir: Ir) -> Result<TokenStream, Error> {
                 Fields::Unit => (quote!(;), quote!(;), quote!(;)),
             };
 
+            let assert_size = assert_size.map(|assert_size| {
+                quote! {
+                    #crate_name::static_assertions::const_assert_eq!(
+                        ::core::mem::size_of::<#raw_ident<#crate_name::zerocopy::BigEndian>>(),
+                        #assert_size
+                    );
+                }
+            });
+
             Ok(quote! {
                 #[derive(#(#raw_derives),*)]
                 #[repr(C)]
@@ -73,6 +83,8 @@ pub fn codegen(ir: Ir) -> Result<TokenStream, Error> {
                         Ok(Self::Raw #to_raws)
                     }
                 }
+
+                #assert_size
             })
         }
         ItemIr::Enum { variants, repr } => {

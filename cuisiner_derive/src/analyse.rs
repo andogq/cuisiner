@@ -1,5 +1,5 @@
 use proc_macro2::Span;
-use syn::{Attribute, Error, Expr, ExprLit, Ident, Lit, Meta};
+use syn::{Attribute, Error, Expr, ExprLit, Ident, Lit, LitInt, Meta};
 
 use crate::{Ast, Fields};
 
@@ -13,6 +13,7 @@ pub fn analyse(ast: Ast) -> Result<DeriveModel, Error> {
             name: item_struct.ident.clone(),
             item: DeriveModelItem::Struct {
                 fields: Fields::from(&item_struct.fields),
+                assert_size: config.assert_size,
             },
         },
         Ast::Enum(item_enum) => DeriveModel {
@@ -78,6 +79,8 @@ pub enum DeriveModelItem {
     Struct {
         /// Collection of fields present in the original struct.
         fields: Fields,
+        /// Expected size of struct for assertion.
+        assert_size: Option<usize>,
     },
     Enum {
         /// All variants and their discriminant values.
@@ -92,6 +95,7 @@ pub enum DeriveModelItem {
 #[cfg_attr(test, derive(Debug, PartialEq, Eq))]
 struct DeriveConfig {
     repr: Option<Repr>,
+    assert_size: Option<usize>,
 }
 
 impl TryFrom<&[Attribute]> for DeriveConfig {
@@ -125,6 +129,12 @@ impl TryFrom<&[Attribute]> for DeriveConfig {
                     config.repr = Some(Repr::try_from(
                         meta.value()?.parse::<Ident>()?.to_string().as_str(),
                     )?);
+
+                    return Ok(());
+                }
+
+                if meta.path.is_ident("assert_size") {
+                    config.assert_size = Some(meta.value()?.parse::<LitInt>()?.base10_parse()?);
 
                     return Ok(());
                 }
@@ -196,10 +206,15 @@ mod test {
         ast: Ast,
         expected_name: impl AsRef<str>,
         expected_field_count: Option<usize>,
+        expected_assert_size: Option<usize>,
     ) {
         let model = analyse(ast).unwrap();
 
-        let DeriveModelItem::Struct { fields } = &model.item else {
+        let DeriveModelItem::Struct {
+            fields,
+            assert_size,
+        } = &model.item
+        else {
             panic!("expected struct derive model item");
         };
 
@@ -212,6 +227,7 @@ mod test {
             },
             expected_field_count
         );
+        assert_eq!(assert_size, &expected_assert_size);
     }
 
     fn test_analyse_enum(ast: Ast, expected_repr: Repr, expected_variants: &[(Ident, usize)]) {
@@ -232,6 +248,7 @@ mod test {
             }),
             "MyStruct",
             None,
+            None,
         );
     }
 
@@ -243,6 +260,7 @@ mod test {
             }),
             "MyStruct",
             Some(1),
+            None,
         );
     }
 
@@ -257,6 +275,23 @@ mod test {
             }),
             "MyStruct",
             Some(2),
+            None,
+        );
+    }
+
+    #[test]
+    fn analyse_valid_struct_with_size_assert() {
+        test_analyse_struct(
+            Ast::Struct(parse_quote! {
+                #[cuisiner(assert_size = 5)]
+                struct MyStruct {
+                    a: u32,
+                    b: bool,
+                }
+            }),
+            "MyStruct",
+            Some(2),
+            Some(5),
         );
     }
 
@@ -346,7 +381,10 @@ mod test {
         fn from_empty_attributes() {
             assert_eq!(
                 DeriveConfig::try_from([].as_slice()).unwrap(),
-                DeriveConfig { repr: None }
+                DeriveConfig {
+                    repr: None,
+                    assert_size: None
+                }
             );
         }
 
@@ -354,7 +392,10 @@ mod test {
         fn single_attribute_path() {
             assert_eq!(
                 DeriveConfig::try_from([parse_quote!(#[cuisiner])].as_slice()).unwrap(),
-                DeriveConfig { repr: None }
+                DeriveConfig {
+                    repr: None,
+                    assert_size: None
+                }
             );
         }
 
@@ -362,7 +403,10 @@ mod test {
         fn single_attribute_empty_list() {
             assert_eq!(
                 DeriveConfig::try_from([parse_quote!(#[cuisiner()])].as_slice()).unwrap(),
-                DeriveConfig { repr: None }
+                DeriveConfig {
+                    repr: None,
+                    assert_size: None
+                }
             );
         }
 
@@ -371,7 +415,8 @@ mod test {
             assert_eq!(
                 DeriveConfig::try_from([parse_quote!(#[cuisiner(repr = i64)])].as_slice()).unwrap(),
                 DeriveConfig {
-                    repr: Some(Repr::I64)
+                    repr: Some(Repr::I64),
+                    assert_size: None
                 }
             )
         }
@@ -383,7 +428,10 @@ mod test {
                     [parse_quote!(#[repr(C)]), parse_quote!(#[some = attribute])].as_slice()
                 )
                 .unwrap(),
-                DeriveConfig { repr: None }
+                DeriveConfig {
+                    repr: None,
+                    assert_size: None
+                }
             );
         }
 

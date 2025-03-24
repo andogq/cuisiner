@@ -15,6 +15,7 @@ cuisiner_derive = { path = "cuisiner_derive" }
 thiserror = "2.0.12"
 zerocopy = { version = "0.8.24", features = ["derive", "std"] }
 cuisiner_derive = { workspace = true }
+static_assertions = "1.1.0"
 
 [dev-dependencies]
 proptest = "1.6.0"

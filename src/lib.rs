@@ -5,6 +5,7 @@ use thiserror::Error;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 pub use cuisiner_derive::Cuisiner;
+pub use static_assertions;
 pub use zerocopy::{self, BigEndian, ByteOrder, LittleEndian, NativeEndian, NetworkEndian};
 
 pub use self::util::*;

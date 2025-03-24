@@ -4,7 +4,7 @@ mod lower;
 mod parse;
 
 use proc_macro2::TokenStream;
-use syn::{DeriveInput, Error, Ident, Type};
+use syn::{Attribute, DeriveInput, Error, Ident, LitInt, Meta, Type};
 
 use self::{analyse::*, codegen::*, lower::*, parse::*};
 
@@ -34,16 +34,18 @@ fn derive_cuisiner_inner(derive_input: DeriveInput) -> Result<TokenStream, Error
 #[derive(Clone)]
 enum Fields {
     /// Named fields ([`syn::FieldsNamed`]).
-    Named(Vec<(Ident, Type)>),
+    Named(Vec<(Ident, Type, FieldAssertions)>),
     /// Unnamed fields ([`syn::FieldsUnnamed`]).
-    Unnamed(Vec<Type>),
+    Unnamed(Vec<(Type, FieldAssertions)>),
     /// No fields ([`syn::Fields::Unit`]).
     Unit,
 }
 
-impl From<&syn::Fields> for Fields {
-    fn from(fields: &syn::Fields) -> Self {
-        match fields {
+impl TryFrom<&syn::Fields> for Fields {
+    type Error = Error;
+
+    fn try_from(fields: &syn::Fields) -> Result<Self, Self::Error> {
+        Ok(match fields {
             syn::Fields::Named(fields_named) => Fields::Named(
                 fields_named
                     .named
@@ -54,19 +56,68 @@ impl From<&syn::Fields> for Fields {
                             .clone()
                             .expect("named struct field must have ident");
                         let ty = field.ty.clone();
+                        let field_assertions = FieldAssertions::try_from(field.attrs.as_slice())?;
 
-                        (ident, ty)
+                        Ok((ident, ty, field_assertions))
                     })
-                    .collect(),
+                    .collect::<Result<_, Error>>()?,
             ),
             syn::Fields::Unnamed(fields_unnamed) => Fields::Unnamed(
                 fields_unnamed
                     .unnamed
                     .iter()
-                    .map(|field| field.ty.clone())
-                    .collect(),
+                    .map(|field| {
+                        Ok((
+                            field.ty.clone(),
+                            FieldAssertions::try_from(field.attrs.as_slice())?,
+                        ))
+                    })
+                    .collect::<Result<_, Error>>()?,
             ),
             syn::Fields::Unit => Fields::Unit,
+        })
+    }
+}
+
+/// Optional assertions that can be applied to a field.
+#[derive(Clone, Default)]
+struct FieldAssertions {
+    /// Size of the field.
+    size: Option<usize>,
+    /// Offset of the field.
+    offset: Option<usize>,
+}
+
+impl TryFrom<&[Attribute]> for FieldAssertions {
+    type Error = Error;
+
+    fn try_from(attrs: &[Attribute]) -> Result<Self, Self::Error> {
+        let mut assertions = Self::default();
+
+        for attr in attrs {
+            if !attr.path().is_ident("cuisiner") {
+                continue;
+            }
+
+            let Meta::List(list) = &attr.meta else {
+                continue;
+            };
+
+            list.parse_nested_meta(|meta| {
+                if meta.path.is_ident("size") {
+                    assertions.size = Some(meta.value()?.parse::<LitInt>()?.base10_parse()?);
+                    return Ok(());
+                }
+
+                if meta.path.is_ident("offset") {
+                    assertions.offset = Some(meta.value()?.parse::<LitInt>()?.base10_parse()?);
+                    return Ok(());
+                }
+
+                Err(Error::new_spanned(meta.path, "unknown attribute"))
+            })?;
         }
+
+        Ok(assertions)
     }
 }

@@ -12,7 +12,7 @@ pub fn analyse(ast: Ast) -> Result<DeriveModel, Error> {
         Ast::Struct(item_struct) => DeriveModel {
             name: item_struct.ident.clone(),
             item: DeriveModelItem::Struct {
-                fields: Fields::from(&item_struct.fields),
+                fields: Fields::try_from(&item_struct.fields)?,
                 assert_size: config.assert_size,
             },
         },

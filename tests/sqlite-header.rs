@@ -6,28 +6,51 @@ use zerocopy::{U16, U32};
 #[derive(Clone, Cuisiner, Debug)]
 #[cuisiner(assert_size = 100)]
 struct SqliteHeader {
+    #[cuisiner(offset = 0, size = 16)]
     header_string: HeaderString,
+    #[cuisiner(offset = 16, size = 2)]
     page_size: PageSize,
+    #[cuisiner(offset = 18, size = 1)]
     file_format_write_version: FileFormatVersion,
+    #[cuisiner(offset = 19, size = 1)]
     file_format_read_version: FileFormatVersion,
+    #[cuisiner(offset = 20, size = 1)]
     page_end_padding: Option<NonZero<u8>>,
+    #[cuisiner(offset = 21, size = 1)]
     max_payload_fraction: ConstU8<64>,
+    #[cuisiner(offset = 22, size = 1)]
     min_payload_fraction: ConstU8<32>,
+    #[cuisiner(offset = 23, size = 1)]
     leaf_payload_fraction: ConstU8<32>,
+    #[cuisiner(offset = 24, size = 4)]
     file_change_counter: u32,
+    #[cuisiner(offset = 28, size = 4)]
     page_count: u32,
+    #[cuisiner(offset = 32, size = 4)]
     freelist_trunk_page: u32,
+    #[cuisiner(offset = 36, size = 4)]
     freelist_page_count: u32,
+    #[cuisiner(offset = 40, size = 4)]
     schema_cookie: u32,
+    #[cuisiner(offset = 44, size = 4)]
     schema_format: SchemaFormat,
+    #[cuisiner(offset = 48, size = 4)]
     default_page_cache_size: u32,
+    #[cuisiner(offset = 52, size = 4)]
     largest_root_btree_page: Option<NonZero<u32>>,
+    #[cuisiner(offset = 56, size = 4)]
     text_encoding: TextEncoding,
+    #[cuisiner(offset = 60, size = 4)]
     user_version: u32,
+    #[cuisiner(offset = 64, size = 4)]
     incremental_vacuum_mode: ByteBoolean<4>,
+    #[cuisiner(offset = 68, size = 4)]
     application_id: u32,
+    #[cuisiner(offset = 72, size = 20)]
     _reserved: Reserved<20>,
+    #[cuisiner(offset = 92, size = 4)]
     version_valid_for: u32,
+    #[cuisiner(offset = 96, size = 4)]
     sqlite_version_number: VersionNumber,
 }
 

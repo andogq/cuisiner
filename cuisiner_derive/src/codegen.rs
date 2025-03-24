@@ -1,8 +1,8 @@
 use proc_macro2::{Span, TokenStream};
 use quote::quote;
-use syn::{Error, LitInt};
+use syn::{Error, Ident, Index, LitInt, Member, Path, Type};
 
-use crate::{Fields, Ir, ItemIr, Repr};
+use crate::{FieldAssertions, Fields, Ir, ItemIr, Repr};
 
 pub fn codegen(ir: Ir) -> Result<TokenStream, Error> {
     let Ir {
@@ -21,9 +21,10 @@ pub fn codegen(ir: Ir) -> Result<TokenStream, Error> {
             raw_derives,
             assert_size,
         } => {
-            let (field_definitions, from_raws, to_raws) = match fields {
+            let (field_definitions, from_raws, to_raws, field_assertions) = match fields {
                 Fields::Named(fields) => {
-                    let (names, tys): (Vec<_>, Vec<_>) = fields.into_iter().unzip();
+                    let (names, tys): (Vec<_>, Vec<_>) =
+                        fields.iter().map(|(name, ty, _)| (name, ty)).unzip();
 
                     (
                         quote! {
@@ -35,10 +36,30 @@ pub fn codegen(ir: Ir) -> Result<TokenStream, Error> {
                         quote! {
                             { #(#names: <#tys as #crate_name::Cuisiner>::try_to_raw::<B>(self.#names)?),* }
                         },
+                        generate_field_assertions(
+                            &crate_name,
+                            &raw_ident,
+                            fields.iter().map(|(name, ty, field_assertions)| {
+                                (
+                                    Member::Named(name.clone()),
+                                    ty.clone(),
+                                    field_assertions.clone(),
+                                )
+                            }),
+                        ),
                     )
                 }
                 Fields::Unnamed(fields) => {
-                    let (names, tys): (Vec<_>, Vec<_>) = fields.into_iter().enumerate().unzip();
+                    let fields = fields
+                        .into_iter()
+                        .enumerate()
+                        .map(|(name, (ty, field_assertions))| {
+                            (Index::from(name), ty, field_assertions)
+                        })
+                        .collect::<Vec<_>>();
+
+                    let (names, tys): (Vec<_>, Vec<_>) =
+                        fields.iter().map(|(name, ty, _)| (name, ty)).unzip();
 
                     (
                         quote! {
@@ -50,9 +71,20 @@ pub fn codegen(ir: Ir) -> Result<TokenStream, Error> {
                         quote! {
                             (#(<#tys as #crate_name::Cuisiner>::try_to_raw(self.#names)?),*);
                         },
+                        generate_field_assertions(
+                            &crate_name,
+                            &raw_ident,
+                            fields.iter().map(|(name, ty, field_assertions)| {
+                                (
+                                    Member::Unnamed(name.clone()),
+                                    ty.clone(),
+                                    field_assertions.clone(),
+                                )
+                            }),
+                        ),
                     )
                 }
-                Fields::Unit => (quote!(;), quote!(;), quote!(;)),
+                Fields::Unit => (quote!(;), quote!(;), quote!(;), quote!()),
             };
 
             let assert_size = assert_size.map(|assert_size| {
@@ -85,6 +117,7 @@ pub fn codegen(ir: Ir) -> Result<TokenStream, Error> {
                 }
 
                 #assert_size
+                #field_assertions
             })
         }
         ItemIr::Enum { variants, repr } => {
@@ -144,4 +177,35 @@ pub fn codegen(ir: Ir) -> Result<TokenStream, Error> {
             })
         }
     }
+}
+
+fn generate_field_assertions(
+    crate_name: &Path,
+    raw_ident: &Ident,
+    fields: impl IntoIterator<Item = (Member, Type, FieldAssertions)>,
+) -> TokenStream {
+    fields
+        .into_iter()
+        .flat_map(|(ident, ty, field_assertions)| {
+            [
+                field_assertions.offset.map(|offset| {
+                    quote! {
+                        #crate_name::static_assertions::const_assert_eq!(
+                            ::core::mem::offset_of!(#raw_ident<#crate_name::zerocopy::BigEndian>, #ident),
+                            #offset
+                        );
+                    }
+                }),
+                field_assertions.size.map(|size| {
+                    quote! {
+                        #crate_name::static_assertions::const_assert_eq!(
+                            ::core::mem::size_of::<<#ty as #crate_name::Cuisiner>::Raw<#crate_name::zerocopy::BigEndian>>(),
+                            #size
+                        );
+                    }
+                })
+            ]
+        })
+        .flatten()
+        .collect()
 }

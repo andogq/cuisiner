@@ -62,6 +62,8 @@ pub enum ItemIr {
 
 #[cfg(test)]
 mod test {
+    use crate::FieldAssertions;
+
     use super::*;
 
     fn test_struct_ir(model: DeriveModel, expected_raw_ident: impl AsRef<str>) {
@@ -79,7 +81,11 @@ mod test {
             DeriveModel {
                 name: Ident::new("MyStruct", Span::call_site()),
                 item: DeriveModelItem::Struct {
-                    fields: Fields::Named(vec![(parse_quote!(a), parse_quote!(u64))]),
+                    fields: Fields::Named(vec![(
+                        parse_quote!(a),
+                        parse_quote!(u64),
+                        FieldAssertions::default(),
+                    )]),
                     assert_size: None,
                 },
             },

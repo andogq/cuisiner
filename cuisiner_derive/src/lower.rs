@@ -9,7 +9,7 @@ pub fn lower(model: DeriveModel) -> Result<Ir, Error> {
 
     Ok(Ir {
         base_ident: model.name.clone(),
-        raw_ident: Ident::new(&format!("{}Raw", model.name), Span::call_site()),
+        raw_ident: Ident::new(&format!("___Cuisiner{}Raw", model.name), Span::call_site()),
         raw_derives: vec![
             parse_quote!(#crate_name::zerocopy::FromBytes),
             parse_quote!(#crate_name::zerocopy::IntoBytes),
@@ -52,7 +52,7 @@ mod test {
                 name: Ident::new("MyStruct", Span::call_site()),
                 fields: Fields::Named(vec![(parse_quote!(a), parse_quote!(u64))]),
             },
-            "MyStructRaw",
+            "___CuisinerMyStructRaw",
         );
     }
 }

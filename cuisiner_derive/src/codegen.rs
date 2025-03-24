@@ -22,10 +22,10 @@ pub fn codegen(ir: Ir) -> Result<TokenStream, Error> {
                     { #(#names: <#tys as #crate_name::Cuisiner>::Raw::<B>),* }
                 },
                 quote! {
-                    { #(#names: <#tys as #crate_name::Cuisiner>::try_from_raw(raw.#names)?),* }
+                    { #(#names: <#tys as #crate_name::Cuisiner>::try_from_raw::<B>(raw.#names)?),* }
                 },
                 quote! {
-                    { #(#names: <#tys as #crate_name::Cuisiner>::try_to_raw(self.#names)?),* }
+                    { #(#names: <#tys as #crate_name::Cuisiner>::try_to_raw::<B>(self.#names)?),* }
                 },
             )
         }

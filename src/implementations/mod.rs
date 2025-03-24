@@ -20,4 +20,3 @@ macro_rules! impl_identity {
 }
 
 impl_identity!(());
-impl_identity!(u8);

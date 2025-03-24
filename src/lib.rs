@@ -1,10 +1,13 @@
 mod implementations;
+mod util;
 
 use thiserror::Error;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 pub use cuisiner_derive::Cuisiner;
 pub use zerocopy::{self, BigEndian, ByteOrder, LittleEndian, NativeEndian, NetworkEndian};
+
+pub use self::util::*;
 
 #[derive(Debug, Error)]
 pub enum CuisinerError {
@@ -13,6 +16,9 @@ pub enum CuisinerError {
 
     #[error("incorrect buffer size for serialising or deserialising")]
     SizeError,
+
+    #[error("error when validating: {0}")]
+    Validation(String),
 }
 
 pub trait Cuisiner: Sized {

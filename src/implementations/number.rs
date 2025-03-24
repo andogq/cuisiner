@@ -56,6 +56,26 @@ macro_rules! impl_number {
         }
     };
 
+    (identity $ty:ty) => {
+        impl $crate::Cuisiner for $ty {
+            type Raw<B: $crate::ByteOrder> = $ty;
+
+            fn try_from_raw<B: $crate::ByteOrder>(
+                raw: Self::Raw<B>,
+            ) -> Result<Self, $crate::CuisinerError> {
+                Ok(raw)
+            }
+
+            fn try_to_raw<B: $crate::ByteOrder>(
+                self,
+            ) -> Result<Self::Raw<B>, $crate::CuisinerError> {
+                Ok(self)
+            }
+        }
+
+        impl_number!(non_zero $ty: $ty);
+    };
+
     ($ty:ty: $raw:ty) => {
         impl_number!(base $ty: $raw);
         impl_number!(non_zero $ty: $raw);
@@ -64,10 +84,12 @@ macro_rules! impl_number {
 
 impl_number!(base f32: zerocopy::byteorder::F32<B>);
 impl_number!(base f64: zerocopy::byteorder::F64<B>);
+impl_number!(identity i8);
 impl_number!(i16: zerocopy::byteorder::I16<B>);
 impl_number!(i32: zerocopy::byteorder::I32<B>);
 impl_number!(i64: zerocopy::byteorder::I64<B>);
 impl_number!(i128: zerocopy::byteorder::I128<B>);
+impl_number!(identity u8);
 impl_number!(u16: zerocopy::byteorder::U16<B>);
 impl_number!(u32: zerocopy::byteorder::U32<B>);
 impl_number!(u64: zerocopy::byteorder::U64<B>);

@@ -95,91 +95,28 @@ impl Cuisiner for PageSize {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Cuisiner, Debug)]
+#[cuisiner(repr = u8)]
 enum FileFormatVersion {
-    Legacy,
-    Wal,
-}
-impl Cuisiner for FileFormatVersion {
-    type Raw<B: ByteOrder> = u8;
-
-    fn try_from_raw<B: ByteOrder>(raw: Self::Raw<B>) -> Result<Self, CuisinerError> {
-        match raw {
-            1 => Ok(Self::Legacy),
-            2 => Ok(Self::Wal),
-            n => Err(CuisinerError::Validation(format!(
-                "invalid file format version ({n})"
-            ))),
-        }
-    }
-
-    fn try_to_raw<B: ByteOrder>(self) -> Result<Self::Raw<B>, CuisinerError> {
-        Ok(match self {
-            Self::Legacy => 1,
-            Self::Wal => 2,
-        })
-    }
+    Legacy = 1,
+    Wal = 2,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Cuisiner, Debug)]
+#[cuisiner(repr = u32)]
 enum SchemaFormat {
-    V1,
-    V2,
-    V3,
-    V4,
-}
-impl Cuisiner for SchemaFormat {
-    type Raw<B: ByteOrder> = U32<B>;
-
-    fn try_from_raw<B: ByteOrder>(raw: Self::Raw<B>) -> Result<Self, CuisinerError> {
-        match raw.get() {
-            1 => Ok(Self::V1),
-            2 => Ok(Self::V2),
-            3 => Ok(Self::V3),
-            4 => Ok(Self::V4),
-            n => Err(CuisinerError::Validation(format!(
-                "invalid schema format ({n})"
-            ))),
-        }
-    }
-
-    fn try_to_raw<B: ByteOrder>(self) -> Result<Self::Raw<B>, CuisinerError> {
-        Ok(U32::new(match self {
-            Self::V1 => 1,
-            Self::V2 => 2,
-            Self::V3 => 3,
-            Self::V4 => 4,
-        }))
-    }
+    V1 = 1,
+    V2 = 2,
+    V3 = 3,
+    V4 = 4,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Cuisiner, Debug)]
+#[cuisiner(repr = u32)]
 enum TextEncoding {
-    Utf8,
-    Utf16Le,
-    Utf16Be,
-}
-impl Cuisiner for TextEncoding {
-    type Raw<B: ByteOrder> = U32<B>;
-
-    fn try_from_raw<B: ByteOrder>(raw: Self::Raw<B>) -> Result<Self, CuisinerError> {
-        match raw.get() {
-            1 => Ok(Self::Utf8),
-            2 => Ok(Self::Utf16Le),
-            3 => Ok(Self::Utf16Be),
-            n => Err(CuisinerError::Validation(format!(
-                "invalid text encoding ({n})"
-            ))),
-        }
-    }
-
-    fn try_to_raw<B: ByteOrder>(self) -> Result<Self::Raw<B>, CuisinerError> {
-        Ok(U32::new(match self {
-            Self::Utf8 => 1,
-            Self::Utf16Le => 2,
-            Self::Utf16Be => 3,
-        }))
-    }
+    Utf8 = 1,
+    Utf16Le = 2,
+    Utf16Be = 3,
 }
 
 #[derive(Clone, Debug)]

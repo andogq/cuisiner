@@ -8,7 +8,7 @@ use syn::{DeriveInput, Error, Ident, Type};
 
 use self::{analyse::*, codegen::*, lower::*, parse::*};
 
-#[proc_macro_derive(Cuisiner)]
+#[proc_macro_derive(Cuisiner, attributes(cuisiner))]
 pub fn derive_cuisiner(ts: proc_macro::TokenStream) -> proc_macro::TokenStream {
     // Parse the token stream.
     let derive_input = syn::parse_macro_input!(ts as DeriveInput);

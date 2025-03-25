@@ -3,12 +3,15 @@ use std::num::NonZero;
 use cuisiner::{ByteBoolean, ByteOrder, ConstU8, Cuisiner, CuisinerError, Reserved};
 use zerocopy::{U16, U32};
 
+const HEADER_SIZE: usize = 100;
+const HEADER_STRING_LEN: usize = 16;
+
 #[derive(Clone, Cuisiner, Debug)]
-#[cuisiner(assert_size = 100)]
+#[cuisiner(assert_size = HEADER_SIZE)]
 struct SqliteHeader {
-    #[cuisiner(offset = 0, size = 16)]
+    #[cuisiner(offset = 0, size = HEADER_STRING_LEN)]
     header_string: HeaderString,
-    #[cuisiner(offset = 16, size = 2)]
+    #[cuisiner(offset = HEADER_STRING_LEN, size = 2)]
     page_size: PageSize,
     #[cuisiner(offset = 18, size = 1)]
     file_format_write_version: FileFormatVersion,
@@ -57,10 +60,10 @@ struct SqliteHeader {
 #[derive(Clone, Debug)]
 struct HeaderString;
 impl HeaderString {
-    const BYTES: [u8; 16] = *b"SQLite format 3\0";
+    const BYTES: [u8; HEADER_STRING_LEN] = *b"SQLite format 3\0";
 }
 impl Cuisiner for HeaderString {
-    type Raw<B: ByteOrder> = [u8; 16];
+    type Raw<B: ByteOrder> = [u8; HEADER_STRING_LEN];
 
     fn try_from_raw<B: ByteOrder>(raw: Self::Raw<B>) -> Result<Self, CuisinerError> {
         if raw != Self::BYTES {

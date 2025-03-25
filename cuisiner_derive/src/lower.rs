@@ -1,5 +1,5 @@
 use proc_macro2::Span;
-use syn::{Error, Ident, Path, parse_quote};
+use syn::{Error, Expr, Ident, Path, parse_quote};
 
 use crate::{DeriveModel, DeriveModelItem, Fields, Repr};
 
@@ -51,7 +51,7 @@ pub enum ItemIr {
         /// Derives to be added to the raw struct.
         raw_derives: Vec<Path>,
         /// Size to assert in the output.
-        assert_size: Option<usize>,
+        assert_size: Option<Expr>,
     },
     /// Enum IR.
     Enum {

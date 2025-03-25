@@ -1,5 +1,5 @@
 use proc_macro2::Span;
-use syn::{Attribute, Error, Expr, ExprLit, Ident, Lit, LitInt, Meta};
+use syn::{Attribute, Error, Expr, ExprLit, Ident, Lit, Meta};
 
 use crate::{Ast, Fields};
 
@@ -80,7 +80,7 @@ pub enum DeriveModelItem {
         /// Collection of fields present in the original struct.
         fields: Fields,
         /// Expected size of struct for assertion.
-        assert_size: Option<usize>,
+        assert_size: Option<Expr>,
     },
     Enum {
         /// All variants and their discriminant values.
@@ -95,7 +95,7 @@ pub enum DeriveModelItem {
 #[cfg_attr(test, derive(Debug, PartialEq, Eq))]
 struct DeriveConfig {
     repr: Option<Repr>,
-    assert_size: Option<usize>,
+    assert_size: Option<Expr>,
 }
 
 impl TryFrom<&[Attribute]> for DeriveConfig {
@@ -134,7 +134,7 @@ impl TryFrom<&[Attribute]> for DeriveConfig {
                 }
 
                 if meta.path.is_ident("assert_size") {
-                    config.assert_size = Some(meta.value()?.parse::<LitInt>()?.base10_parse()?);
+                    config.assert_size = Some(meta.value()?.parse()?);
 
                     return Ok(());
                 }
@@ -206,7 +206,7 @@ mod test {
         ast: Ast,
         expected_name: impl AsRef<str>,
         expected_field_count: Option<usize>,
-        expected_assert_size: Option<usize>,
+        expected_assert_size: Option<Expr>,
     ) {
         let model = analyse(ast).unwrap();
 
@@ -291,7 +291,7 @@ mod test {
             }),
             "MyStruct",
             Some(2),
-            Some(5),
+            Some(parse_quote!(5)),
         );
     }
 

@@ -101,7 +101,7 @@ pub fn codegen(ir: Ir) -> Result<TokenStream, Error> {
                 #[repr(C)]
                 #[zerocopy(crate = #zerocopy_crate)]
                 #[automatically_derived]
-                struct #raw_ident<B: #crate_name::zerocopy::ByteOrder> #field_definitions
+                pub struct #raw_ident<B: #crate_name::zerocopy::ByteOrder> #field_definitions
 
                 #[automatically_derived]
                 impl #crate_name::Cuisiner for #base_ident {

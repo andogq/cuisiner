@@ -4,7 +4,7 @@ mod lower;
 mod parse;
 
 use proc_macro2::TokenStream;
-use syn::{Attribute, DeriveInput, Error, Ident, LitInt, Meta, Type};
+use syn::{Attribute, DeriveInput, Error, Expr, Ident, Meta, Type};
 
 use self::{analyse::*, codegen::*, lower::*, parse::*};
 
@@ -83,9 +83,9 @@ impl TryFrom<&syn::Fields> for Fields {
 #[derive(Clone, Default)]
 struct FieldAssertions {
     /// Size of the field.
-    size: Option<usize>,
+    size: Option<Expr>,
     /// Offset of the field.
-    offset: Option<usize>,
+    offset: Option<Expr>,
 }
 
 impl TryFrom<&[Attribute]> for FieldAssertions {
@@ -105,12 +105,12 @@ impl TryFrom<&[Attribute]> for FieldAssertions {
 
             list.parse_nested_meta(|meta| {
                 if meta.path.is_ident("size") {
-                    assertions.size = Some(meta.value()?.parse::<LitInt>()?.base10_parse()?);
+                    assertions.size = Some(meta.value()?.parse()?);
                     return Ok(());
                 }
 
                 if meta.path.is_ident("offset") {
-                    assertions.offset = Some(meta.value()?.parse::<LitInt>()?.base10_parse()?);
+                    assertions.offset = Some(meta.value()?.parse()?);
                     return Ok(());
                 }
 

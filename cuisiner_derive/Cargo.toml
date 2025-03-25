@@ -21,3 +21,4 @@ syn = { version = "2.0.100", features = ["full"] }
 
 [dev-dependencies]
 cuisiner = { workspace = true }
+syn = { version = "2.0.100", features = ["full", "extra-traits"] }

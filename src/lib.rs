@@ -1,3 +1,5 @@
+#![doc = include_str!("../README.md")]
+
 mod implementations;
 mod util;
 
@@ -9,18 +11,6 @@ pub use static_assertions;
 pub use zerocopy::{self, BigEndian, ByteOrder, LittleEndian, NativeEndian, NetworkEndian};
 
 pub use self::util::*;
-
-#[derive(Debug, Error)]
-pub enum CuisinerError {
-    #[error("zero encountered in an unexpected location")]
-    Zero,
-
-    #[error("incorrect buffer size for serialising or deserialising")]
-    SizeError,
-
-    #[error("error when validating: {0}")]
-    Validation(String),
-}
 
 pub trait Cuisiner: Sized {
     type Raw<B: ByteOrder>: FromBytes + IntoBytes + Immutable;
@@ -43,38 +33,14 @@ pub trait Cuisiner: Sized {
     }
 }
 
-mod sample {
-    use super::*;
+#[derive(Debug, Error)]
+pub enum CuisinerError {
+    #[error("zero encountered in an unexpected location")]
+    Zero,
 
-    // #[derive(Cuisiner)]
-    // #[cuisiner(big_endian)]
-    struct MyStruct {
-        a_field: u32,
-        another: i64,
-    }
+    #[error("incorrect buffer size for serialising or deserialising")]
+    SizeError,
 
-    #[derive(zerocopy::FromBytes, zerocopy::IntoBytes, zerocopy::Immutable)]
-    #[repr(C)]
-    struct MyStructRaw<B: ByteOrder> {
-        a_field: <u32 as Cuisiner>::Raw<B>,
-        another: <i64 as Cuisiner>::Raw<B>,
-    }
-
-    impl Cuisiner for MyStruct {
-        type Raw<B: ByteOrder> = MyStructRaw<B>;
-
-        fn try_from_raw<B: ByteOrder>(raw: Self::Raw<B>) -> Result<Self, CuisinerError> {
-            Ok(Self {
-                a_field: <_ as Cuisiner>::try_from_raw(raw.a_field)?,
-                another: <_ as Cuisiner>::try_from_raw(raw.another)?,
-            })
-        }
-
-        fn try_to_raw<B: ByteOrder>(self) -> Result<Self::Raw<B>, CuisinerError> {
-            Ok(MyStructRaw {
-                a_field: <_ as Cuisiner>::try_to_raw(self.a_field)?,
-                another: <_ as Cuisiner>::try_to_raw(self.another)?,
-            })
-        }
-    }
+    #[error("error when validating: {0}")]
+    Validation(String),
 }

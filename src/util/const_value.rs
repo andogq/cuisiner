@@ -4,7 +4,7 @@ use crate::{ByteOrder, Cuisiner, CuisinerError};
 
 macro_rules! impl_const_value {
     ($ident:ident, |$value:ident: $ty:ty| $value_to_raw:expr, |$raw:ident: $raw_ty:ty| $raw_to_value:expr) => {
-        #[derive(Clone, Debug)]
+        #[derive(Clone, Debug, Eq, PartialEq)]
         pub struct $ident<const N: $ty>;
 
         impl<const N: $ty> Cuisiner for $ident<N> {

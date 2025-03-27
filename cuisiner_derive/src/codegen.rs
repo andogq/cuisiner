@@ -2,12 +2,13 @@ use proc_macro2::{Span, TokenStream};
 use quote::quote;
 use syn::{Error, Ident, Index, LitInt, Member, Path, Type};
 
-use crate::{FieldAssertions, Fields, Ir, ItemIr, Repr};
+use crate::{FieldAssertions, Fields, Ir, ItemIr, Repr, StructGenerics};
 
 pub fn codegen(ir: Ir) -> Result<TokenStream, Error> {
     let Ir {
         crate_name,
         base_ident,
+        visibility,
         item,
     } = ir;
 
@@ -20,7 +21,17 @@ pub fn codegen(ir: Ir) -> Result<TokenStream, Error> {
             raw_ident,
             raw_derives,
             assert_size,
+            generics,
         } => {
+            let StructGenerics {
+                base: base_generics,
+                raw: raw_generics,
+                b_ident: b_generic_ident,
+                b_generic,
+            } = &generics;
+            let (impl_generics, ty_generics, where_clause) = base_generics.split_for_impl();
+            let (_, raw_ty_generics, _) = raw_generics.split_for_impl();
+
             let (field_definitions, from_raws, to_raws, field_assertions) = match fields {
                 Fields::Named(fields) => {
                     let (names, tys): (Vec<_>, Vec<_>) =
@@ -28,13 +39,13 @@ pub fn codegen(ir: Ir) -> Result<TokenStream, Error> {
 
                     (
                         quote! {
-                            { #(#names: <#tys as #crate_name::Cuisiner>::Raw::<B>),* }
+                            { #(#names: <#tys as #crate_name::Cuisiner>::Raw::<#b_generic_ident>),* }
                         },
                         quote! {
-                            { #(#names: <#tys as #crate_name::Cuisiner>::try_from_raw::<B>(raw.#names)?),* }
+                            { #(#names: <#tys as #crate_name::Cuisiner>::try_from_raw::<#b_generic_ident>(raw.#names)?),* }
                         },
                         quote! {
-                            { #(#names: <#tys as #crate_name::Cuisiner>::try_to_raw::<B>(self.#names)?),* }
+                            { #(#names: <#tys as #crate_name::Cuisiner>::try_to_raw::<#b_generic_ident>(self.#names)?),* }
                         },
                         generate_field_assertions(
                             &crate_name,
@@ -101,17 +112,17 @@ pub fn codegen(ir: Ir) -> Result<TokenStream, Error> {
                 #[repr(C)]
                 #[zerocopy(crate = #zerocopy_crate)]
                 #[automatically_derived]
-                pub struct #raw_ident<B: #crate_name::zerocopy::ByteOrder> #field_definitions
+                #visibility struct #raw_ident #raw_generics #field_definitions
 
                 #[automatically_derived]
-                impl #crate_name::Cuisiner for #base_ident {
-                    type Raw<B: #crate_name::zerocopy::ByteOrder> = #raw_ident<B>;
+                impl #impl_generics #crate_name::Cuisiner for #base_ident #ty_generics #where_clause {
+                    type Raw<#b_generic> = #raw_ident #raw_ty_generics;
 
-                    fn try_from_raw<B: #crate_name::zerocopy::ByteOrder>(raw: Self::Raw<B>) -> ::core::result::Result<Self, #crate_name::CuisinerError> {
+                    fn try_from_raw<#b_generic>(raw: Self::Raw<#b_generic_ident>) -> ::core::result::Result<Self, #crate_name::CuisinerError> {
                         Ok(Self #from_raws)
                     }
 
-                    fn try_to_raw<B: #crate_name::zerocopy::ByteOrder>(self) -> ::core::result::Result<Self::Raw<B>, #crate_name::CuisinerError> {
+                    fn try_to_raw<#b_generic>(self) -> ::core::result::Result<Self::Raw<#b_generic_ident>, #crate_name::CuisinerError> {
                         Ok(Self::Raw #to_raws)
                     }
                 }

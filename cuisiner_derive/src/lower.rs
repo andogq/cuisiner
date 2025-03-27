@@ -1,5 +1,5 @@
 use proc_macro2::Span;
-use syn::{Error, Expr, Ident, Path, parse_quote};
+use syn::{Error, Expr, GenericParam, Generics, Ident, Path, Visibility, parse_quote};
 
 use crate::{DeriveModel, DeriveModelItem, Fields, Repr};
 
@@ -9,10 +9,12 @@ pub fn lower(model: DeriveModel) -> Result<Ir, Error> {
 
     Ok(Ir {
         base_ident: model.name.clone(),
+        visibility: model.visibility,
         item: match model.item {
             DeriveModelItem::Struct {
                 fields,
                 assert_size,
+                generics,
             } => ItemIr::Struct {
                 fields,
                 raw_ident: Ident::new(&format!("___Cuisiner{}Raw", model.name), Span::call_site()),
@@ -23,6 +25,7 @@ pub fn lower(model: DeriveModel) -> Result<Ir, Error> {
                     parse_quote!(#crate_name::zerocopy::Unaligned),
                 ],
                 assert_size,
+                generics: StructGenerics::new(generics, &crate_name),
             },
             DeriveModelItem::Enum { variants, repr } => ItemIr::Enum { repr, variants },
         },
@@ -38,6 +41,8 @@ pub struct Ir {
     pub base_ident: Ident,
     /// Item specific information.
     pub item: ItemIr,
+    /// Visibility of the output item.
+    pub visibility: Visibility,
 }
 
 /// IR specific to the item.
@@ -52,6 +57,8 @@ pub enum ItemIr {
         raw_derives: Vec<Path>,
         /// Size to assert in the output.
         assert_size: Option<Expr>,
+        /// Required generics.
+        generics: StructGenerics,
     },
     /// Enum IR.
     Enum {
@@ -60,8 +67,36 @@ pub enum ItemIr {
     },
 }
 
+/// Generics required for lowering a struct.
+pub struct StructGenerics {
+    pub base: Generics,
+    pub raw: Generics,
+    pub b_ident: Ident,
+    pub b_generic: GenericParam,
+}
+
+impl StructGenerics {
+    pub fn new(base: Generics, crate_name: &Path) -> Self {
+        // Ident for the `ByteOrder` generic.
+        let b_ident = parse_quote!(B);
+        let b_generic: GenericParam = parse_quote!(#b_ident: #crate_name::zerocopy::ByteOrder);
+
+        let mut raw = base.clone();
+        raw.params.push(b_generic.clone());
+
+        Self {
+            base,
+            raw,
+            b_ident,
+            b_generic,
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
+    use syn::{Generics, Visibility};
+
     use crate::FieldAssertions;
 
     use super::*;
@@ -80,6 +115,7 @@ mod test {
         test_struct_ir(
             DeriveModel {
                 name: Ident::new("MyStruct", Span::call_site()),
+                visibility: Visibility::Inherited,
                 item: DeriveModelItem::Struct {
                     fields: Fields::Named(vec![(
                         parse_quote!(a),
@@ -87,6 +123,7 @@ mod test {
                         FieldAssertions::default(),
                     )]),
                     assert_size: None,
+                    generics: Generics::default(),
                 },
             },
             "___CuisinerMyStructRaw",
@@ -97,6 +134,7 @@ mod test {
     fn valid_enum_model() {
         let ir = lower(DeriveModel {
             name: Ident::new("MyEnum", Span::call_site()),
+            visibility: Visibility::Inherited,
             item: DeriveModelItem::Enum {
                 variants: vec![
                     (parse_quote!(First), 1),

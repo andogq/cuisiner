@@ -1,5 +1,5 @@
 use proc_macro2::Span;
-use syn::{Attribute, Error, Expr, ExprLit, Ident, Lit, Meta};
+use syn::{Attribute, Error, Expr, ExprLit, Generics, Ident, Lit, Meta, Visibility};
 
 use crate::{Ast, Fields};
 
@@ -11,13 +11,16 @@ pub fn analyse(ast: Ast) -> Result<DeriveModel, Error> {
     Ok(match ast {
         Ast::Struct(item_struct) => DeriveModel {
             name: item_struct.ident.clone(),
+            visibility: item_struct.vis,
             item: DeriveModelItem::Struct {
                 fields: Fields::try_from(&item_struct.fields)?,
                 assert_size: config.assert_size,
+                generics: item_struct.generics,
             },
         },
         Ast::Enum(item_enum) => DeriveModel {
             name: item_enum.ident.clone(),
+            visibility: item_enum.vis,
             item: DeriveModelItem::Enum {
                 repr: config.repr.ok_or(Error::new(
                     Span::call_site(),
@@ -71,6 +74,9 @@ pub fn analyse(ast: Ast) -> Result<DeriveModel, Error> {
 pub struct DeriveModel {
     /// Original name of the struct.
     pub name: Ident,
+    /// Visibility of the original struct.
+    pub visibility: Visibility,
+    /// Additional information specific to the variant of model.
     pub item: DeriveModelItem,
 }
 
@@ -81,6 +87,8 @@ pub enum DeriveModelItem {
         fields: Fields,
         /// Expected size of struct for assertion.
         assert_size: Option<Expr>,
+        /// Generics present on the original struct.
+        generics: Generics,
     },
     Enum {
         /// All variants and their discriminant values.
@@ -213,6 +221,7 @@ mod test {
         let DeriveModelItem::Struct {
             fields,
             assert_size,
+            generics,
         } = &model.item
         else {
             panic!("expected struct derive model item");

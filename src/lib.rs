@@ -4,7 +4,7 @@ mod implementations;
 mod util;
 
 use thiserror::Error;
-use zerocopy::{FromBytes, Immutable, IntoBytes};
+use zerocopy::{FromBytes, Immutable, IntoBytes, Unaligned};
 
 pub use cuisiner_derive::Cuisiner;
 pub use static_assertions;
@@ -13,7 +13,7 @@ pub use zerocopy::{self, BigEndian, ByteOrder, LittleEndian, NativeEndian, Netwo
 pub use self::util::*;
 
 pub trait Cuisiner: Sized {
-    type Raw<B: ByteOrder>: FromBytes + IntoBytes + Immutable;
+    type Raw<B: ByteOrder>: FromBytes + IntoBytes + Immutable + Unaligned;
 
     /// Attempt to convert this value from a raw value.
     fn try_from_raw<B: ByteOrder>(raw: Self::Raw<B>) -> Result<Self, CuisinerError>;

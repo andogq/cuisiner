@@ -78,7 +78,7 @@ pub struct StructGenerics {
 impl StructGenerics {
     pub fn new(base: Generics, crate_name: &Path) -> Self {
         // Ident for the `ByteOrder` generic.
-        let b_ident = parse_quote!(B);
+        let b_ident = parse_quote!(___Cuisiner_Generic_B);
         let b_generic: GenericParam = parse_quote!(#b_ident: #crate_name::zerocopy::ByteOrder);
 
         let mut raw = base.clone();

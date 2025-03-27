@@ -30,7 +30,7 @@ pub fn codegen(ir: Ir) -> Result<TokenStream, Error> {
                 b_generic,
             } = &generics;
             let (impl_generics, ty_generics, where_clause) = base_generics.split_for_impl();
-            let (_, raw_ty_generics, _) = raw_generics.split_for_impl();
+            let (_, raw_ty_generics, raw_where_clause) = raw_generics.split_for_impl();
 
             let (field_definitions, from_raws, to_raws, field_assertions) = match fields {
                 Fields::Named(fields) => {
@@ -101,7 +101,7 @@ pub fn codegen(ir: Ir) -> Result<TokenStream, Error> {
             let assert_size = assert_size.map(|assert_size| {
                 quote! {
                     #crate_name::static_assertions::const_assert_eq!(
-                        ::core::mem::size_of::<#raw_ident<#crate_name::zerocopy::BigEndian>>(),
+                        ::core::mem::size_of::<#raw_ident #raw_generics>(),
                         #assert_size
                     );
                 }
@@ -112,7 +112,7 @@ pub fn codegen(ir: Ir) -> Result<TokenStream, Error> {
                 #[repr(C)]
                 #[zerocopy(crate = #zerocopy_crate)]
                 #[automatically_derived]
-                #visibility struct #raw_ident #raw_generics #field_definitions
+                #visibility struct #raw_ident #raw_generics #raw_where_clause #field_definitions
 
                 #[automatically_derived]
                 impl #impl_generics #crate_name::Cuisiner for #base_ident #ty_generics #where_clause {

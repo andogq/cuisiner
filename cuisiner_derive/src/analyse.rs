@@ -221,7 +221,7 @@ mod test {
         let DeriveModelItem::Struct {
             fields,
             assert_size,
-            generics,
+            generics: _,
         } = &model.item
         else {
             panic!("expected struct derive model item");

@@ -1,7 +1,9 @@
+use std::collections::HashMap;
+
 use proc_macro2::Span;
 use syn::{
     Attribute, Error, Expr, ExprLit, GenericArgument, Generics, Ident, Lit, LitStr, Meta, Token,
-    Visibility, punctuated::Punctuated,
+    Visibility, meta::ParseNestedMeta, punctuated::Punctuated,
 };
 
 use crate::{Ast, Fields};
@@ -107,6 +109,7 @@ pub enum DeriveModelItem {
 struct DeriveConfig {
     repr: Option<Repr>,
     default_assert: AssertConfig,
+    namespace_assert: HashMap<String, AssertConfig>,
 }
 
 /// Container assertions that can be provided via an attribute.
@@ -117,33 +120,47 @@ struct AssertConfig {
     generics: Option<Vec<GenericArgument>>,
 }
 
+impl AssertConfig {
+    fn try_parse_meta(&mut self, meta: &ParseNestedMeta) -> Result<bool, Error> {
+        if meta.path.is_ident("assert_size") {
+            self.size = Some(meta.value()?.parse()?);
+
+            return Ok(true);
+        }
+
+        if meta.path.is_ident("assert_generics") {
+            let assert_generics_str = meta.value()?.parse::<LitStr>()?;
+            let assert_generics = assert_generics_str
+                .parse_with(Punctuated::<GenericArgument, Token![,]>::parse_terminated)?;
+
+            self.generics = Some(assert_generics.into_iter().collect());
+
+            return Ok(true);
+        }
+
+        Ok(false)
+    }
+}
+
 impl TryFrom<&[Attribute]> for DeriveConfig {
     type Error = Error;
 
     fn try_from(attrs: &[Attribute]) -> Result<Self, Self::Error> {
-        // Search for relevant attributes.
-        let mut attrs = attrs.iter().filter(|attr| attr.path().is_ident("cuisiner"));
-
         let mut config = Self::default();
 
-        let Some(attr) = attrs.next() else {
-            // No attributes provided.
-            return Ok(config);
-        };
+        for attr in attrs {
+            if !attr.path().is_ident("cuisiner") {
+                continue;
+            }
 
-        // Make sure only one attribute is provided.
-        if attrs.next().is_some() {
-            return Err(Error::new(
-                Span::call_site(),
-                "only a single `cuisiner` attribute is supported",
-            ));
-        }
+            let Meta::List(attr) = &attr.meta else {
+                return Err(Error::new_spanned(
+                    attr,
+                    "attribute must be in list format (eg `#[cuisiner(argument)]`)",
+                ));
+            };
 
-        match &attr.meta {
-            // Accept attibute with no arguments, although it's useless.
-            Meta::Path(_) => {}
-            // Parse out arguments from list.
-            Meta::List(_) => attr.parse_nested_meta(|meta| {
+            attr.parse_nested_meta(|meta| {
                 if meta.path.is_ident("repr") {
                     config.repr = Some(Repr::try_from(
                         meta.value()?.parse::<Ident>()?.to_string().as_str(),
@@ -152,31 +169,26 @@ impl TryFrom<&[Attribute]> for DeriveConfig {
                     return Ok(());
                 }
 
-                if meta.path.is_ident("assert_size") {
-                    config.default_assert.size = Some(meta.value()?.parse()?);
-
+                if config.default_assert.try_parse_meta(&meta)? {
                     return Ok(());
                 }
 
-                if meta.path.is_ident("assert_generics") {
-                    let assert_generics_str = meta.value()?.parse::<LitStr>()?;
-                    let assert_generics = assert_generics_str
-                        .parse_with(Punctuated::<GenericArgument, Token![,]>::parse_terminated)?;
+                // Try to parse as a namespaced assertion
+                let nested_name = meta.path.require_ident()?.to_string();
+                let mut nested_assert_config = AssertConfig::default();
+                meta.parse_nested_meta(|meta| {
+                    if nested_assert_config.try_parse_meta(&meta)? {
+                        return Ok(());
+                    }
 
-                    config.default_assert.generics = Some(assert_generics.into_iter().collect());
+                    Err(Error::new_spanned(meta.path, "unknown attribute argument"))
+                })?;
+                config
+                    .namespace_assert
+                    .insert(nested_name, nested_assert_config);
 
-                    return Ok(());
-                }
-
-                Err(Error::new_spanned(meta.path, "unknown attribute argument"))
-            })?,
-            // Reject all other formats
-            _ => {
-                return Err(Error::new_spanned(
-                    attr,
-                    "attribute must be in list format (eg `#[cuisiner(argument)]`)",
-                ));
-            }
+                Ok(())
+            })?;
         }
 
         Ok(config)
@@ -417,10 +429,7 @@ mod test {
 
         #[test]
         fn single_attribute_path() {
-            assert_eq!(
-                DeriveConfig::try_from([parse_quote!(#[cuisiner])].as_slice()).unwrap(),
-                DeriveConfig::default()
-            );
+            assert!(DeriveConfig::try_from([parse_quote!(#[cuisiner])].as_slice()).is_err());
         }
 
         #[test]
@@ -507,6 +516,61 @@ mod test {
                             ]),
                             ..Default::default()
                         },
+                        ..Default::default()
+                    }
+                )
+            }
+
+            #[test]
+            fn namespaced() {
+                assert_eq!(
+                    DeriveConfig::try_from(
+                        [parse_quote!(#[cuisiner(some_namespace(assert_generics = "'static, SomeType, u64"))])]
+                            .as_slice()
+                    )
+                    .unwrap(),
+                    DeriveConfig {
+                        namespace_assert: [("some_namespace".into(), AssertConfig {
+                            generics: Some(vec![
+                                parse_quote!('static),
+                                parse_quote!(SomeType),
+                                parse_quote!(u64)
+                            ]),
+                            ..Default::default()
+                        })].into_iter().collect(),
+                        ..Default::default()
+                    }
+                )
+            }
+
+            #[test]
+            fn multiple_namespaced() {
+                assert_eq!(
+                    DeriveConfig::try_from(
+                        [
+                            parse_quote!(#[cuisiner(some_namespace(assert_generics = "'static, SomeType, u64"))]),
+                            parse_quote!(#[cuisiner(something(assert_generics = "bool, T", assert_size = 123))])
+                        ]
+                            .as_slice()
+                    )
+                        .unwrap(),
+                    DeriveConfig {
+                        namespace_assert: [
+                            ("some_namespace".into(), AssertConfig {
+                                generics: Some(vec![
+                                    parse_quote!('static),
+                                    parse_quote!(SomeType),
+                                    parse_quote!(u64)
+                                ]),
+                                ..Default::default()
+                            }),
+                            ("something".into(), AssertConfig {
+                                generics: Some(vec![
+                                    parse_quote!(bool),
+                                    parse_quote!(T)
+                                ]),
+                                size: Some(parse_quote!(123))
+                            })].into_iter().collect(),
                         ..Default::default()
                     }
                 )

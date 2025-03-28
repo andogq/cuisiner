@@ -1,6 +1,6 @@
 use proc_macro2::{Span, TokenStream};
 use quote::quote;
-use syn::{Error, Ident, Index, LitInt, Member, Path, Type};
+use syn::{Error, Ident, Index, LitInt, Member, Path, Type, parse_quote};
 
 use crate::{FieldAssertions, Fields, Ir, ItemIr, Repr, StructGenerics};
 
@@ -101,7 +101,7 @@ pub fn codegen(ir: Ir) -> Result<TokenStream, Error> {
             let assert_size = assert_size.map(|assert_size| {
                 quote! {
                     #crate_name::static_assertions::const_assert_eq!(
-                        ::core::mem::size_of::<#raw_ident #raw_generics>(),
+                        ::core::mem::size_of::<#raw_ident<#crate_name::zerocopy::BigEndian>>(),
                         #assert_size
                     );
                 }

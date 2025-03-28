@@ -1,6 +1,6 @@
 use proc_macro2::{Span, TokenStream};
 use quote::quote;
-use syn::{Error, Ident, Index, LitInt, Member, Path, Type, parse_quote};
+use syn::{Error, Ident, Index, LitInt, Member, Path, Type};
 
 use crate::{FieldAssertions, Fields, Ir, ItemIr, Repr, StructGenerics};
 

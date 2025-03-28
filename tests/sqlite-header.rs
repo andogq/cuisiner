@@ -3,6 +3,7 @@ use std::num::NonZero;
 use cuisiner::{ByteBoolean, ByteOrder, ConstU8, Cuisiner, CuisinerError, Reserved};
 use zerocopy::{U16, U32};
 
+#[allow(dead_code)]
 const HEADER_SIZE: usize = 100;
 const HEADER_STRING_LEN: usize = 16;
 

@@ -1,5 +1,8 @@
 use proc_macro2::Span;
-use syn::{Attribute, Error, Expr, ExprLit, Generics, Ident, Lit, Meta, Visibility};
+use syn::{
+    Attribute, Error, Expr, ExprLit, GenericArgument, Generics, Ident, Lit, LitStr, Meta, Token,
+    Visibility, punctuated::Punctuated,
+};
 
 use crate::{Ast, Fields};
 
@@ -104,6 +107,7 @@ pub enum DeriveModelItem {
 struct DeriveConfig {
     repr: Option<Repr>,
     assert_size: Option<Expr>,
+    assert_generics: Option<Vec<GenericArgument>>,
 }
 
 impl TryFrom<&[Attribute]> for DeriveConfig {
@@ -143,6 +147,16 @@ impl TryFrom<&[Attribute]> for DeriveConfig {
 
                 if meta.path.is_ident("assert_size") {
                     config.assert_size = Some(meta.value()?.parse()?);
+
+                    return Ok(());
+                }
+
+                if meta.path.is_ident("assert_generics") {
+                    let assert_generics_str = meta.value()?.parse::<LitStr>()?;
+                    let assert_generics = assert_generics_str
+                        .parse_with(Punctuated::<GenericArgument, Token![,]>::parse_terminated)?;
+
+                    config.assert_generics = Some(assert_generics.into_iter().collect());
 
                     return Ok(());
                 }
@@ -392,7 +406,8 @@ mod test {
                 DeriveConfig::try_from([].as_slice()).unwrap(),
                 DeriveConfig {
                     repr: None,
-                    assert_size: None
+                    assert_size: None,
+                    assert_generics: None,
                 }
             );
         }
@@ -403,7 +418,8 @@ mod test {
                 DeriveConfig::try_from([parse_quote!(#[cuisiner])].as_slice()).unwrap(),
                 DeriveConfig {
                     repr: None,
-                    assert_size: None
+                    assert_size: None,
+                    assert_generics: None,
                 }
             );
         }
@@ -414,7 +430,8 @@ mod test {
                 DeriveConfig::try_from([parse_quote!(#[cuisiner()])].as_slice()).unwrap(),
                 DeriveConfig {
                     repr: None,
-                    assert_size: None
+                    assert_size: None,
+                    assert_generics: None,
                 }
             );
         }
@@ -425,7 +442,8 @@ mod test {
                 DeriveConfig::try_from([parse_quote!(#[cuisiner(repr = i64)])].as_slice()).unwrap(),
                 DeriveConfig {
                     repr: Some(Repr::I64),
-                    assert_size: None
+                    assert_size: None,
+                    assert_generics: None,
                 }
             )
         }
@@ -439,9 +457,64 @@ mod test {
                 .unwrap(),
                 DeriveConfig {
                     repr: None,
-                    assert_size: None
+                    assert_size: None,
+                    assert_generics: None,
                 }
             );
+        }
+
+        mod assert_generics {
+            use super::*;
+
+            #[test]
+            fn none() {
+                assert_eq!(
+                    DeriveConfig::try_from(
+                        [parse_quote!(#[cuisiner(assert_generics = "")])].as_slice()
+                    )
+                    .unwrap(),
+                    DeriveConfig {
+                        repr: None,
+                        assert_size: None,
+                        assert_generics: Some(vec![]),
+                    }
+                )
+            }
+
+            #[test]
+            fn one() {
+                assert_eq!(
+                    DeriveConfig::try_from(
+                        [parse_quote!(#[cuisiner(assert_generics = "SomeType")])].as_slice()
+                    )
+                    .unwrap(),
+                    DeriveConfig {
+                        repr: None,
+                        assert_size: None,
+                        assert_generics: Some(vec![parse_quote!(SomeType)]),
+                    }
+                )
+            }
+
+            #[test]
+            fn many() {
+                assert_eq!(
+                    DeriveConfig::try_from(
+                        [parse_quote!(#[cuisiner(assert_generics = "'static, SomeType, u64")])]
+                            .as_slice()
+                    )
+                    .unwrap(),
+                    DeriveConfig {
+                        repr: None,
+                        assert_size: None,
+                        assert_generics: Some(vec![
+                            parse_quote!('static),
+                            parse_quote!(SomeType),
+                            parse_quote!(u64)
+                        ]),
+                    }
+                )
+            }
         }
 
         #[test]

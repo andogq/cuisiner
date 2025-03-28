@@ -38,8 +38,10 @@ pub enum CuisinerError {
     #[error("zero encountered in an unexpected location")]
     Zero,
 
-    #[error("incorrect buffer size for serialising or deserialising")]
-    SizeError,
+    #[error(
+        "incorrect buffer size for serialising or deserialising (required {required}, found {found})"
+    )]
+    SizeError { required: usize, found: usize },
 
     #[error("error when validating: {0}")]
     Validation(String),

@@ -17,7 +17,7 @@ pub fn analyse(ast: Ast) -> Result<DeriveModel, Error> {
             visibility: item_struct.vis,
             item: DeriveModelItem::Struct {
                 fields: Fields::try_from(&item_struct.fields)?,
-                assert_size: config.assert_size,
+                assert_size: config.default_assert.size,
                 generics: item_struct.generics,
             },
         },
@@ -106,8 +106,15 @@ pub enum DeriveModelItem {
 #[cfg_attr(test, derive(Debug, PartialEq, Eq))]
 struct DeriveConfig {
     repr: Option<Repr>,
-    assert_size: Option<Expr>,
-    assert_generics: Option<Vec<GenericArgument>>,
+    default_assert: AssertConfig,
+}
+
+/// Container assertions that can be provided via an attribute.
+#[derive(Clone, Default)]
+#[cfg_attr(test, derive(Debug, PartialEq, Eq))]
+struct AssertConfig {
+    size: Option<Expr>,
+    generics: Option<Vec<GenericArgument>>,
 }
 
 impl TryFrom<&[Attribute]> for DeriveConfig {
@@ -146,7 +153,7 @@ impl TryFrom<&[Attribute]> for DeriveConfig {
                 }
 
                 if meta.path.is_ident("assert_size") {
-                    config.assert_size = Some(meta.value()?.parse()?);
+                    config.default_assert.size = Some(meta.value()?.parse()?);
 
                     return Ok(());
                 }
@@ -156,7 +163,7 @@ impl TryFrom<&[Attribute]> for DeriveConfig {
                     let assert_generics = assert_generics_str
                         .parse_with(Punctuated::<GenericArgument, Token![,]>::parse_terminated)?;
 
-                    config.assert_generics = Some(assert_generics.into_iter().collect());
+                    config.default_assert.generics = Some(assert_generics.into_iter().collect());
 
                     return Ok(());
                 }
@@ -404,11 +411,7 @@ mod test {
         fn from_empty_attributes() {
             assert_eq!(
                 DeriveConfig::try_from([].as_slice()).unwrap(),
-                DeriveConfig {
-                    repr: None,
-                    assert_size: None,
-                    assert_generics: None,
-                }
+                DeriveConfig::default()
             );
         }
 
@@ -416,11 +419,7 @@ mod test {
         fn single_attribute_path() {
             assert_eq!(
                 DeriveConfig::try_from([parse_quote!(#[cuisiner])].as_slice()).unwrap(),
-                DeriveConfig {
-                    repr: None,
-                    assert_size: None,
-                    assert_generics: None,
-                }
+                DeriveConfig::default()
             );
         }
 
@@ -428,11 +427,7 @@ mod test {
         fn single_attribute_empty_list() {
             assert_eq!(
                 DeriveConfig::try_from([parse_quote!(#[cuisiner()])].as_slice()).unwrap(),
-                DeriveConfig {
-                    repr: None,
-                    assert_size: None,
-                    assert_generics: None,
-                }
+                DeriveConfig::default()
             );
         }
 
@@ -442,8 +437,7 @@ mod test {
                 DeriveConfig::try_from([parse_quote!(#[cuisiner(repr = i64)])].as_slice()).unwrap(),
                 DeriveConfig {
                     repr: Some(Repr::I64),
-                    assert_size: None,
-                    assert_generics: None,
+                    ..Default::default()
                 }
             )
         }
@@ -455,11 +449,7 @@ mod test {
                     [parse_quote!(#[repr(C)]), parse_quote!(#[some = attribute])].as_slice()
                 )
                 .unwrap(),
-                DeriveConfig {
-                    repr: None,
-                    assert_size: None,
-                    assert_generics: None,
-                }
+                DeriveConfig::default()
             );
         }
 
@@ -474,9 +464,11 @@ mod test {
                     )
                     .unwrap(),
                     DeriveConfig {
-                        repr: None,
-                        assert_size: None,
-                        assert_generics: Some(vec![]),
+                        default_assert: AssertConfig {
+                            generics: Some(vec![]),
+                            ..Default::default()
+                        },
+                        ..Default::default()
                     }
                 )
             }
@@ -489,9 +481,11 @@ mod test {
                     )
                     .unwrap(),
                     DeriveConfig {
-                        repr: None,
-                        assert_size: None,
-                        assert_generics: Some(vec![parse_quote!(SomeType)]),
+                        default_assert: AssertConfig {
+                            generics: Some(vec![parse_quote!(SomeType)]),
+                            ..Default::default()
+                        },
+                        ..Default::default()
                     }
                 )
             }
@@ -505,13 +499,15 @@ mod test {
                     )
                     .unwrap(),
                     DeriveConfig {
-                        repr: None,
-                        assert_size: None,
-                        assert_generics: Some(vec![
-                            parse_quote!('static),
-                            parse_quote!(SomeType),
-                            parse_quote!(u64)
-                        ]),
+                        default_assert: AssertConfig {
+                            generics: Some(vec![
+                                parse_quote!('static),
+                                parse_quote!(SomeType),
+                                parse_quote!(u64)
+                            ]),
+                            ..Default::default()
+                        },
+                        ..Default::default()
                     }
                 )
             }

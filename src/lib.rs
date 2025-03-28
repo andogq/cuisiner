@@ -23,7 +23,11 @@ pub trait Cuisiner: Sized {
 
     /// Read the provided bytes and attempt to parse out the type.
     fn from_bytes<B: ByteOrder>(bytes: &[u8]) -> Result<Self, CuisinerError> {
-        let raw = Self::Raw::<B>::read_from_bytes(bytes).map_err(|_| CuisinerError::SizeError)?;
+        let (raw, _) =
+            Self::Raw::<B>::read_from_prefix(bytes).map_err(|_| CuisinerError::SizeError {
+                required: std::mem::size_of::<Self::Raw<B>>(),
+                found: bytes.len(),
+            })?;
         Self::try_from_raw(raw)
     }
 

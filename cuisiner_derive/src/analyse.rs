@@ -19,8 +19,9 @@ pub fn analyse(ast: Ast) -> Result<DeriveModel, Error> {
             visibility: item_struct.vis,
             item: DeriveModelItem::Struct {
                 fields: Fields::try_from(&item_struct.fields)?,
-                assert_size: config.default_assert.size,
                 generics: item_struct.generics,
+                default_assert: config.default_assert,
+                namespace_assert: config.namespace_assert,
             },
         },
         Ast::Enum(item_enum) => DeriveModel {
@@ -90,10 +91,10 @@ pub enum DeriveModelItem {
     Struct {
         /// Collection of fields present in the original struct.
         fields: Fields,
-        /// Expected size of struct for assertion.
-        assert_size: Option<Expr>,
         /// Generics present on the original struct.
         generics: Generics,
+        default_assert: AssertConfig,
+        namespace_assert: HashMap<String, AssertConfig>,
     },
     Enum {
         /// All variants and their discriminant values.
@@ -115,9 +116,9 @@ struct DeriveConfig {
 /// Container assertions that can be provided via an attribute.
 #[derive(Clone, Default)]
 #[cfg_attr(test, derive(Debug, PartialEq, Eq))]
-struct AssertConfig {
-    size: Option<Expr>,
-    generics: Option<Vec<GenericArgument>>,
+pub struct AssertConfig {
+    pub size: Option<Expr>,
+    pub generics: Option<Vec<GenericArgument>>,
 }
 
 impl AssertConfig {
@@ -253,8 +254,9 @@ mod test {
 
         let DeriveModelItem::Struct {
             fields,
-            assert_size,
             generics: _,
+            default_assert,
+            namespace_assert: _,
         } = &model.item
         else {
             panic!("expected struct derive model item");
@@ -269,7 +271,7 @@ mod test {
             },
             expected_field_count
         );
-        assert_eq!(assert_size, &expected_assert_size);
+        assert_eq!(default_assert.size, expected_assert_size);
     }
 
     fn test_analyse_enum(ast: Ast, expected_repr: Repr, expected_variants: &[(Ident, usize)]) {

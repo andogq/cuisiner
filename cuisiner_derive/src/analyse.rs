@@ -118,7 +118,7 @@ struct DeriveConfig {
 #[cfg_attr(test, derive(Debug, PartialEq, Eq))]
 pub struct AssertConfig {
     pub size: Option<Expr>,
-    pub generics: Option<Vec<GenericArgument>>,
+    pub generics: Vec<GenericArgument>,
 }
 
 impl AssertConfig {
@@ -134,7 +134,7 @@ impl AssertConfig {
             let assert_generics = assert_generics_str
                 .parse_with(Punctuated::<GenericArgument, Token![,]>::parse_terminated)?;
 
-            self.generics = Some(assert_generics.into_iter().collect());
+            self.generics = assert_generics.into_iter().collect();
 
             return Ok(true);
         }
@@ -476,7 +476,7 @@ mod test {
                     .unwrap(),
                     DeriveConfig {
                         default_assert: AssertConfig {
-                            generics: Some(vec![]),
+                            generics: vec![],
                             ..Default::default()
                         },
                         ..Default::default()
@@ -493,7 +493,7 @@ mod test {
                     .unwrap(),
                     DeriveConfig {
                         default_assert: AssertConfig {
-                            generics: Some(vec![parse_quote!(SomeType)]),
+                            generics: vec![parse_quote!(SomeType)],
                             ..Default::default()
                         },
                         ..Default::default()
@@ -511,11 +511,11 @@ mod test {
                     .unwrap(),
                     DeriveConfig {
                         default_assert: AssertConfig {
-                            generics: Some(vec![
+                            generics: vec![
                                 parse_quote!('static),
                                 parse_quote!(SomeType),
                                 parse_quote!(u64)
-                            ]),
+                            ],
                             ..Default::default()
                         },
                         ..Default::default()
@@ -533,11 +533,11 @@ mod test {
                     .unwrap(),
                     DeriveConfig {
                         namespace_assert: [("some_namespace".into(), AssertConfig {
-                            generics: Some(vec![
+                            generics: vec![
                                 parse_quote!('static),
                                 parse_quote!(SomeType),
                                 parse_quote!(u64)
-                            ]),
+                            ],
                             ..Default::default()
                         })].into_iter().collect(),
                         ..Default::default()
@@ -559,18 +559,18 @@ mod test {
                     DeriveConfig {
                         namespace_assert: [
                             ("some_namespace".into(), AssertConfig {
-                                generics: Some(vec![
+                                generics: vec![
                                     parse_quote!('static),
                                     parse_quote!(SomeType),
                                     parse_quote!(u64)
-                                ]),
+                                ],
                                 ..Default::default()
                             }),
                             ("something".into(), AssertConfig {
-                                generics: Some(vec![
+                                generics: vec![
                                     parse_quote!(bool),
                                     parse_quote!(T)
-                                ]),
+                                ],
                                 size: Some(parse_quote!(123))
                             })].into_iter().collect(),
                         ..Default::default()

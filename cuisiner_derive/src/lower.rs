@@ -1,6 +1,7 @@
 use proc_macro2::TokenStream;
 use syn::{
-    Error, Expr, GenericParam, Generics, Ident, Path, Type, Visibility, parse_quote, parse2,
+    Error, Expr, GenericArgument, GenericParam, Generics, Ident, Path, Type, Visibility,
+    parse_quote, parse2,
 };
 
 use crate::{DeriveModel, DeriveModelItem, FieldAssertions, Fields, Repr};
@@ -25,31 +26,42 @@ pub fn lower(model: DeriveModel) -> Result<Ir, Error> {
 
                 let mut assertions = Vec::new();
 
+                let container_ty = |generics: &[GenericArgument]| {
+                    let generics = generics.iter().cloned().chain(std::iter::once(
+                        parse_quote!(#crate_name::zerocopy::byteorder::BigEndian),
+                    ));
+
+                    parse_quote!(#raw_ident::<#(#generics,)*>)
+                };
+
+                let raw_ty =
+                    |ty| parse_quote!(<#ty as #crate_name::Cuisiner>::Raw<#crate_name::BigEndian>);
+
                 if let Some(assert_size) = &default_assert.size {
                     assertions.push(Assertion::Size {
-                        ty: parse2(raw_ident_tokens.clone())?,
+                        ty: container_ty(&default_assert.generics),
                         size: assert_size.clone(),
                     });
                 }
 
                 fn add_assertions(
                     assertions: &mut Vec<Assertion>,
-                    container: &Ident,
-                    ident: &Ident,
-                    ty: &Type,
+                    container: Type,
+                    field: Ident,
+                    ty: Type,
                     field_assertions: &FieldAssertions,
                 ) {
                     if let Some(size) = &field_assertions.size {
                         assertions.push(Assertion::Size {
-                            ty: ty.clone(),
+                            ty,
                             size: size.clone(),
                         });
                     }
 
                     if let Some(offset) = &field_assertions.offset {
                         assertions.push(Assertion::Offset {
-                            container: container.clone(),
-                            field: ident.clone(),
+                            container,
+                            field,
                             offset: offset.clone(),
                         });
                     }
@@ -60,9 +72,9 @@ pub fn lower(model: DeriveModel) -> Result<Ir, Error> {
                         for (ident, ty, field_assertions) in fields {
                             add_assertions(
                                 &mut assertions,
-                                &raw_ident,
-                                ident,
-                                ty,
+                                container_ty(&default_assert.generics),
+                                ident.clone(),
+                                raw_ty(ty),
                                 field_assertions,
                             );
                         }
@@ -71,9 +83,9 @@ pub fn lower(model: DeriveModel) -> Result<Ir, Error> {
                         for (i, (ty, field_assertions)) in fields.iter().enumerate() {
                             add_assertions(
                                 &mut assertions,
-                                &raw_ident,
-                                &parse_quote!(#i),
-                                ty,
+                                container_ty(&default_assert.generics),
+                                parse_quote!(#i),
+                                raw_ty(ty),
                                 field_assertions,
                             );
                         }
@@ -106,7 +118,7 @@ pub enum Assertion {
         size: Expr,
     },
     Offset {
-        container: Ident,
+        container: Type,
         field: Ident,
         offset: Expr,
     },

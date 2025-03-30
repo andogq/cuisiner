@@ -476,7 +476,7 @@ mod test {
                     .unwrap(),
                     DeriveConfig {
                         default_assert: AssertConfig {
-                            generics: vec![],
+                            generics: vec![vec![]],
                             ..Default::default()
                         },
                         ..Default::default()

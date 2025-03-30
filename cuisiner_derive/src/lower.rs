@@ -34,60 +34,43 @@ pub fn lower(model: DeriveModel) -> Result<Ir, Error> {
                     parse_quote!(#raw_ident::<#(#generics,)*>)
                 };
 
-                let raw_ty =
-                    |ty| parse_quote!(<#ty as #crate_name::Cuisiner>::Raw<#crate_name::BigEndian>);
-
                 if let Some(assert_size) = &default_assert.size {
-                    assertions.push(Assertion::Size {
-                        ty: container_ty(&default_assert.generics),
-                        size: assert_size.clone(),
-                    });
+                    assertions.extend(default_assert.generics.iter().map(|generics| {
+                        Assertion::Size {
+                            ty: container_ty(generics),
+                            size: assert_size.clone(),
+                        }
+                    }));
                 }
 
-                fn add_assertions(
-                    assertions: &mut Vec<Assertion>,
-                    container: Type,
-                    field: Ident,
-                    ty: Type,
-                    field_assertions: &FieldAssertions,
-                ) {
+                let mut add_assertions = |field: Ident, ty, field_assertions: &FieldAssertions| {
                     if let Some(size) = &field_assertions.size {
                         assertions.push(Assertion::Size {
-                            ty,
+                            ty: parse_quote!(<#ty as #crate_name::Cuisiner>::Raw<#crate_name::BigEndian>),
                             size: size.clone(),
                         });
                     }
 
                     if let Some(offset) = &field_assertions.offset {
-                        assertions.push(Assertion::Offset {
-                            container,
-                            field,
-                            offset: offset.clone(),
-                        });
+                        assertions.extend(default_assert.generics.iter().map(|generics| {
+                            Assertion::Offset {
+                                container: container_ty(generics),
+                                field: field.clone(),
+                                offset: offset.clone(),
+                            }
+                        }));
                     }
-                }
+                };
 
                 match &fields {
                     Fields::Named(fields) => {
                         for (ident, ty, field_assertions) in fields {
-                            add_assertions(
-                                &mut assertions,
-                                container_ty(&default_assert.generics),
-                                ident.clone(),
-                                raw_ty(ty),
-                                field_assertions,
-                            );
+                            add_assertions(ident.clone(), ty, field_assertions);
                         }
                     }
                     Fields::Unnamed(fields) => {
                         for (i, (ty, field_assertions)) in fields.iter().enumerate() {
-                            add_assertions(
-                                &mut assertions,
-                                container_ty(&default_assert.generics),
-                                parse_quote!(#i),
-                                raw_ty(ty),
-                                field_assertions,
-                            );
+                            add_assertions(parse_quote!(#i), ty, field_assertions);
                         }
                     }
                     _ => {}

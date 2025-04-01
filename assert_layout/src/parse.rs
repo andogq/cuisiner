@@ -1,4 +1,7 @@
-use std::ops::{Deref, DerefMut};
+use std::{
+    collections::HashMap,
+    ops::{Deref, DerefMut},
+};
 
 use proc_macro2::Span;
 use syn::{
@@ -9,9 +12,7 @@ use syn::{
 pub fn parse(attrs: impl IntoIterator<Item = Meta>, item: ItemStruct) -> Result<Ast, Error> {
     let mut ast = Ast {
         item,
-        size: None,
-        generics: Vec::new(),
-        field_assertions: Vec::new(),
+        namespaces: HashMap::new(),
     };
 
     // Process attributes on fields.
@@ -60,7 +61,13 @@ pub fn parse(attrs: impl IntoIterator<Item = Meta>, item: ItemStruct) -> Result<
                         Ok(())
                     })?;
 
-                    ast.field_assertions.push(assertion);
+                    // TODO: Select the correct namespace
+                    let namespace = "".to_string();
+                    ast.namespaces
+                        .entry(namespace)
+                        .or_default()
+                        .field_assertions
+                        .push(assertion);
 
                     Ok(attrs)
                 },
@@ -69,52 +76,84 @@ pub fn parse(attrs: impl IntoIterator<Item = Meta>, item: ItemStruct) -> Result<
             Ok::<_, Error>(())
         })?;
 
-    for attr in attrs.into_iter() {
-        let attr = attr.require_name_value()?;
+    let (namespace, nested) = parse_namespace(attrs)?;
 
-        match attr.path.require_ident()?.to_string().as_str() {
-            "size" => {
-                ast.size = Some(attr.value.clone());
-            }
-            "generics" => {
-                let Expr::Lit(ExprLit {
-                    lit: Lit::Str(ref lit_str),
-                    ..
-                }) = attr.value
-                else {
-                    return Err(Error::new_spanned(
-                        &attr.value,
-                        "expected generics in string",
-                    ));
+    ast.namespaces.insert("".to_string(), namespace);
+    ast.namespaces.extend(nested);
+
+    Ok(ast)
+}
+
+fn parse_namespace(
+    attrs: impl IntoIterator<Item = Meta>,
+) -> Result<(Namespace, Vec<(String, Namespace)>), Error> {
+    let mut namespace = Namespace::default();
+    let mut nested = Vec::new();
+
+    for attr in attrs {
+        match attr {
+            Meta::Path(path) => todo!(),
+            Meta::List(attr) => {
+                let (namespace, deeply_nested) = parse_namespace(
+                    attr.parse_args_with(Punctuated::<Meta, Token![,]>::parse_terminated)?,
+                )?;
+
+                if !deeply_nested.is_empty() {
+                    return Err(Error::new_spanned(attr, "cannot deeply nest namespaces"));
                 };
 
-                ast.generics.push(WithSpan::new(
-                    lit_str
-                        .parse_with(Punctuated::<GenericArgument, Token![,]>::parse_terminated)?
-                        .into_iter()
-                        .collect(),
-                    lit_str,
-                ));
+                nested.push((attr.path.require_ident()?.to_string(), namespace));
             }
-            attr_name => {
-                return Err(Error::new_spanned(
-                    &attr.path,
-                    format!("unknown attribute: {attr_name}"),
-                ));
-            }
+            Meta::NameValue(attr) => match attr.path.require_ident()?.to_string().as_str() {
+                "size" => {
+                    namespace.size = Some(attr.value.clone());
+                }
+                "generics" => {
+                    let Expr::Lit(ExprLit {
+                        lit: Lit::Str(ref lit_str),
+                        ..
+                    }) = attr.value
+                    else {
+                        return Err(Error::new_spanned(
+                            &attr.value,
+                            "expected generics in string",
+                        ));
+                    };
+
+                    namespace.generics.push(WithSpan::new(
+                        lit_str
+                            .parse_with(Punctuated::<GenericArgument, Token![,]>::parse_terminated)?
+                            .into_iter()
+                            .collect(),
+                        lit_str,
+                    ));
+                }
+                attr_name => {
+                    return Err(Error::new_spanned(
+                        &attr.path,
+                        format!("unknown attribute: {attr_name}"),
+                    ));
+                }
+            },
         }
     }
 
-    Ok(ast)
+    Ok((namespace, nested))
 }
 
 pub struct Ast {
     /// Item that the macro was called on.
     pub item: ItemStruct,
+    pub namespaces: HashMap<String, Namespace>,
+}
+
+#[derive(Default)]
+pub struct Namespace {
     /// Expected size of the item.
     pub size: Option<Expr>,
     /// Generics provided for assertions.
     pub generics: Vec<WithSpan<Vec<GenericArgument>>>,
+    /// Field assertions.
     pub field_assertions: Vec<FieldAssertion>,
 }
 

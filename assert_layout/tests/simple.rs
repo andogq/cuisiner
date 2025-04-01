@@ -69,3 +69,9 @@ trait NestedTrait {
 impl NestedTrait for u64 {
     type Nested = u16;
 }
+
+#[assert_layout(generics = "u8", size = 1, namespace(generics = "u16", size = 2))]
+#[repr(C, packed)]
+struct NamespacedStruct<T> {
+    thing: T,
+}

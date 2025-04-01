@@ -14,10 +14,12 @@ pub fn analyse(ast: Ast) -> Result<LayoutModel, Error> {
     let container_generics = ast.item.generics.split_for_impl().1;
     let container_type: Type = parse_quote!(#container_ident #container_generics);
 
-    let assertions = ast
-        .generics
-        .into_iter()
-        .map(|generics| {
+    let bound_generics = get_bound_generics(&ast.item.generics);
+
+    let mut assertions = Vec::new();
+
+    for (name, namespace) in ast.namespaces {
+        for generics in namespace.generics {
             // Make sure that the provided generics match with the definition's.
             if generics.len() != ast.item.generics.params.len() {
                 return Err(Error::new(
@@ -30,8 +32,6 @@ pub fn analyse(ast: Ast) -> Result<LayoutModel, Error> {
                 ));
             }
 
-            let bound_generics = get_bound_generics(&ast.item.generics);
-
             // Convert the generics into a list of top-level items (`type` and `const` statements) used
             // during assertions.
             let assert_items: Vec<AssertionItem> = ast
@@ -43,7 +43,7 @@ pub fn analyse(ast: Ast) -> Result<LayoutModel, Error> {
                 .map(AssertionItem::try_from)
                 .collect::<Result<_, _>>()?;
 
-            let assertions = ast
+            let namespace_assertions = namespace
                 .field_assertions
                 .iter()
                 .flat_map(|assertion| {
@@ -60,7 +60,7 @@ pub fn analyse(ast: Ast) -> Result<LayoutModel, Error> {
                     ]
                 })
                 // Add container assertion
-                .chain(std::iter::once(ast.size.as_ref().map(|size| {
+                .chain(std::iter::once(namespace.size.as_ref().map(|size| {
                     Assertion::Size {
                         ty: container_type.clone(),
                         size: size.clone(),
@@ -69,9 +69,9 @@ pub fn analyse(ast: Ast) -> Result<LayoutModel, Error> {
                 .flatten()
                 .collect();
 
-            Ok((assert_items, assertions))
-        })
-        .collect::<Result<Vec<_>, _>>()?;
+            assertions.push((assert_items, namespace_assertions));
+        }
+    }
 
     Ok(LayoutModel {
         item: ast.item,

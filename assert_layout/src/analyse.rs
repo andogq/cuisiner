@@ -1,126 +1,113 @@
-use std::{collections::HashMap, ops::Deref};
+use std::collections::HashMap;
 
-use proc_macro2::Span;
 use syn::{
-    Error, Expr, GenericArgument, GenericParam, Ident, ItemStruct, Member, Path, PathArguments,
-    PathSegment, Token, Type, TypeParamBound, TypePath, parse_quote, parse_quote_spanned,
-    punctuated::Punctuated, spanned::Spanned,
+    Error, Expr, GenericArgument, GenericParam, Generics, Ident, ItemStruct, Member, Path,
+    PathArguments, PathSegment, Token, Type, TypeParamBound, TypePath, parse_quote,
+    parse_quote_spanned, punctuated::Punctuated, spanned::Spanned,
 };
 
 use crate::parse::Ast;
 
 pub fn analyse(ast: Ast) -> Result<LayoutModel, Error> {
-    // Make sure that the provided generics match the number on the container.
-    let provided_generic_count = ast
-        .generics
-        .as_ref()
-        .map(|generics| generics.len())
-        .unwrap_or(0);
-    if provided_generic_count != ast.item.generics.params.len() {
-        return Err(Error::new(
-            ast.generics
-                .map(|generics| generics.span())
-                .unwrap_or(Span::call_site()),
-            format!(
-                "expected {} generic arguments provided, but found {provided_generic_count}",
-                ast.item.generics.params.len()
-            ),
-        ));
-    }
-
     // Build the container type.
     let container_ident = ast.item.ident.clone();
     let container_generics = ast.item.generics.split_for_impl().1;
     let container_type: Type = parse_quote!(#container_ident #container_generics);
 
-    // Collect all container generics which are only bound by a single trait in order to
-    // disambiguate them.
-    let bound_generics = ast
-        .item
+    let assertions = ast
         .generics
-        .type_params()
-        .filter_map(|param| {
-            if param.bounds.len() != 1 {
-                return None;
-            };
+        .into_iter()
+        .map(|generics| {
+            // Make sure that the provided generics match with the definition's.
+            if generics.len() != ast.item.generics.params.len() {
+                return Err(Error::new(
+                    generics.span(),
+                    format!(
+                        "expected {} generic arguments, but found {}",
+                        ast.item.generics.params.len(),
+                        generics.len()
+                    ),
+                ));
+            }
 
-            let Some(TypeParamBound::Trait(bound)) = param.bounds.first() else {
-                return None;
-            };
+            let bound_generics = get_bound_generics(&ast.item.generics);
 
-            Some((param.ident.clone(), bound.path.clone()))
-        })
-        .collect::<HashMap<_, _>>();
-
-    // Zip up provided generics with container generics.
-    let generics = ast
-        .item
-        .generics
-        .params
-        .iter()
-        .zip(ast.generics.iter().flat_map(|generics| generics.deref()))
-        .map(|(param, ty)| {
-            // Expand the generics.
-            Ok(match (param, ty) {
-                (GenericParam::Lifetime(_), GenericArgument::Lifetime(_)) => unimplemented!(),
-                (GenericParam::Type(type_param), GenericArgument::Type(ty)) => {
-                    AssertionItem::Type {
-                        ident: type_param.ident.clone(),
-                        ty: ty.clone(),
-                    }
-                }
-                (GenericParam::Const(const_param), GenericArgument::Const(const_expr)) => {
-                    AssertionItem::Const {
-                        ident: const_param.ident.clone(),
-                        ty: const_param.ty.clone(),
-                        expr: const_expr.clone(),
-                    }
-                }
-                (param, ty) => {
-                    return Err(Error::new_spanned(
-                        ty,
-                        format!(
-                            "{} required as generic argument",
-                            match param {
-                                GenericParam::Lifetime(_) => "lifetime",
-                                GenericParam::Type(_) => "type",
-                                GenericParam::Const(_) => "const",
+            // Convert the generics into a list of top-level items (`type` and `const` statements) used
+            // during assertions.
+            let assert_items: Vec<AssertionItem> = ast
+                .item
+                .generics
+                .params
+                .iter()
+                .zip(generics.iter())
+                .map(|(param, ty)| {
+                    Ok(match (param, ty) {
+                        (GenericParam::Lifetime(_), GenericArgument::Lifetime(_)) => {
+                            unimplemented!()
+                        }
+                        (GenericParam::Type(type_param), GenericArgument::Type(ty)) => {
+                            AssertionItem::Type {
+                                ident: type_param.ident.clone(),
+                                ty: ty.clone(),
                             }
-                        ),
-                    ));
-                }
-            })
-        })
-        .collect::<Result<_, _>>()?;
+                        }
+                        (GenericParam::Const(const_param), GenericArgument::Const(const_expr)) => {
+                            AssertionItem::Const {
+                                ident: const_param.ident.clone(),
+                                ty: const_param.ty.clone(),
+                                expr: const_expr.clone(),
+                            }
+                        }
+                        (param, ty) => {
+                            return Err(Error::new_spanned(
+                                ty,
+                                format!(
+                                    "{} required as generic argument",
+                                    match param {
+                                        GenericParam::Lifetime(_) => "lifetime",
+                                        GenericParam::Type(_) => "type",
+                                        GenericParam::Const(_) => "const",
+                                    }
+                                ),
+                            ));
+                        }
+                    })
+                })
+                .collect::<Result<_, _>>()?;
 
-    Ok(LayoutModel {
-        item: ast.item,
-        assertions: vec![(
-            generics,
-            ast.field_assertions
-                .into_iter()
-                // Expand field assertions
+            let assertions = ast
+                .field_assertions
+                .iter()
                 .flat_map(|assertion| {
                     [
-                        assertion.size.map(|size| Assertion::Size {
-                            ty: qualify_generic(&bound_generics, assertion.ty),
-                            size,
+                        assertion.size.as_ref().map(|size| Assertion::Size {
+                            ty: qualify_generic(&bound_generics, assertion.ty.clone()),
+                            size: size.clone(),
                         }),
-                        assertion.offset.map(|offset| Assertion::Offset {
+                        assertion.offset.as_ref().map(|offset| Assertion::Offset {
                             container: container_type.clone(),
-                            field: assertion.field,
-                            offset,
+                            field: assertion.field.clone(),
+                            offset: offset.clone(),
                         }),
                     ]
                 })
                 // Add container assertion
-                .chain(std::iter::once(ast.size.map(|size| Assertion::Size {
-                    ty: container_type.clone(),
-                    size,
+                .chain(std::iter::once(ast.size.as_ref().map(|size| {
+                    Assertion::Size {
+                        ty: container_type.clone(),
+                        size: size.clone(),
+                    }
                 })))
                 .flatten()
-                .collect(),
-        )],
+                .collect();
+
+            Ok((assert_items, assertions))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
+    Ok(LayoutModel {
+        item: ast.item,
+        assertions,
     })
 }
 
@@ -149,7 +136,7 @@ pub enum AssertionItem {
 
 /// Traverse all of the path segments, and qualify any nested generics.
 fn qualify_path_segments<'a>(
-    bound_generics: &'a HashMap<Ident, Path>,
+    bound_generics: &HashMap<&Ident, &Path>,
     segments: impl Iterator<Item = &'a mut PathSegment>,
 ) {
     segments.for_each(|segment| {
@@ -187,7 +174,7 @@ fn qualify_path_segments<'a>(
 }
 
 /// Attempt to qualify the provided type if it's detected to be a generic.
-fn qualify_generic(bound_generics: &HashMap<Ident, Path>, mut ty: Type) -> Type {
+fn qualify_generic(bound_generics: &HashMap<&Ident, &Path>, mut ty: Type) -> Type {
     let segments = match ty {
         // Only accept `Path` types which aren't already qualified and don't have a leading `::`.
         Type::Path(TypePath {
@@ -243,18 +230,39 @@ fn qualify_generic(bound_generics: &HashMap<Ident, Path>, mut ty: Type) -> Type 
     parse_quote_spanned! { ty.span() => <#ident as #bound_trait>::#segments }
 }
 
+/// Collect all container generics which are only bound by a single trait in order to disambiguate
+/// them.
+fn get_bound_generics(generics: &Generics) -> HashMap<&Ident, &Path> {
+    generics
+        .type_params()
+        .filter_map(|param| {
+            if param.bounds.len() != 1 {
+                return None;
+            };
+
+            let Some(TypeParamBound::Trait(bound)) = param.bounds.first() else {
+                return None;
+            };
+
+            Some((&param.ident, &bound.path))
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod test {
     use quote::ToTokens;
 
     use super::*;
 
+    #[allow(non_snake_case)]
     fn test_qualify_generic(ty: Type, expected: Type) {
-        let bound_generics = [
-            (parse_quote!(T), parse_quote!(MyTrait)),
-            (parse_quote!(U), parse_quote!(some_module::OtherTrait)),
-        ]
-        .into();
+        let T = parse_quote!(T);
+        let U = parse_quote!(U);
+        let MyTrait = parse_quote!(MyTrait);
+        let OtherTrait = parse_quote!(some_module::OtherTrait);
+
+        let bound_generics = [(&T, &MyTrait), (&U, &OtherTrait)].into();
         let output = qualify_generic(&bound_generics, ty);
         println!(
             "output: {}, expected: {}",

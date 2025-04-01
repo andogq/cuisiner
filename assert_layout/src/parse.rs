@@ -10,7 +10,7 @@ pub fn parse(attrs: impl IntoIterator<Item = Meta>, item: ItemStruct) -> Result<
     let mut ast = Ast {
         item,
         size: None,
-        generics: None,
+        generics: Vec::new(),
         field_assertions: Vec::new(),
     };
 
@@ -88,7 +88,7 @@ pub fn parse(attrs: impl IntoIterator<Item = Meta>, item: ItemStruct) -> Result<
                     ));
                 };
 
-                ast.generics = Some(WithSpan::new(
+                ast.generics.push(WithSpan::new(
                     lit_str
                         .parse_with(Punctuated::<GenericArgument, Token![,]>::parse_terminated)?
                         .into_iter()
@@ -114,7 +114,7 @@ pub struct Ast {
     /// Expected size of the item.
     pub size: Option<Expr>,
     /// Generics provided for assertions.
-    pub generics: Option<WithSpan<Vec<GenericArgument>>>,
+    pub generics: Vec<WithSpan<Vec<GenericArgument>>>,
     pub field_assertions: Vec<FieldAssertion>,
 }
 

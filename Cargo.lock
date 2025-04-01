@@ -3,6 +3,15 @@
 version = 4
 
 [[package]]
+name = "assert_layout"
+version = "0.0.4"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "autocfg"
 version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

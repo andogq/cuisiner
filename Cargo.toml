@@ -9,7 +9,7 @@ license.workspace = true
 
 [workspace]
 resolver = "2"
-members = ["cuisiner_derive"]
+members = [ "assert_layout","cuisiner_derive"]
 
 [workspace.package]
 version = "0.0.4"

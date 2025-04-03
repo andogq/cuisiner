@@ -48,7 +48,7 @@ checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
 name = "cuisiner"
-version = "0.0.4"
+version = "0.0.5"
 dependencies = [
  "assert_layout",
  "cuisiner_derive",
@@ -59,7 +59,7 @@ dependencies = [
 
 [[package]]
 name = "cuisiner_derive"
-version = "0.0.4"
+version = "0.0.5"
 dependencies = [
  "cuisiner",
  "proc-macro2",

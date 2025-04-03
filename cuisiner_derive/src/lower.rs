@@ -1,10 +1,7 @@
 use proc_macro2::TokenStream;
-use syn::{
-    Error, Expr, GenericArgument, GenericParam, Generics, Ident, Path, Type, Visibility,
-    parse_quote, parse2,
-};
+use syn::{Error, GenericParam, Generics, Ident, Path, Visibility, parse_quote, parse2};
 
-use crate::{DeriveModel, DeriveModelItem, FieldAssertions, Fields, Repr};
+use crate::{DeriveModel, DeriveModelItem, Fields, Repr};
 
 /// From the provided [`DeriveModel`], generate an [`Ir`] representing it.
 pub fn lower(model: DeriveModel) -> Result<Ir, Error> {
@@ -14,67 +11,10 @@ pub fn lower(model: DeriveModel) -> Result<Ir, Error> {
         base_ident: model.name.clone(),
         visibility: model.visibility,
         item: match model.item {
-            DeriveModelItem::Struct {
-                fields,
-                generics,
-                default_assert,
-                namespace_assert,
-            } => {
+            DeriveModelItem::Struct { fields, generics } => {
                 let raw_ident = format!("___Cuisiner{}Raw", model.name);
                 let raw_ident_tokens: TokenStream = raw_ident.parse()?;
                 let raw_ident: Ident = parse2(raw_ident_tokens.clone())?;
-
-                let mut assertions = Vec::new();
-
-                let container_ty = |generics: &[GenericArgument]| {
-                    let generics = generics.iter().cloned().chain(std::iter::once(
-                        parse_quote!(#crate_name::zerocopy::byteorder::BigEndian),
-                    ));
-
-                    parse_quote!(#raw_ident::<#(#generics,)*>)
-                };
-
-                if let Some(assert_size) = &default_assert.size {
-                    assertions.extend(default_assert.generics.iter().map(|generics| {
-                        Assertion::Size {
-                            ty: container_ty(generics),
-                            size: assert_size.clone(),
-                        }
-                    }));
-                }
-
-                let mut add_assertions = |field: Ident, ty, field_assertions: &FieldAssertions| {
-                    if let Some(size) = &field_assertions.size {
-                        assertions.push(Assertion::Size {
-                            ty: parse_quote!(<#ty as #crate_name::Cuisiner>::Raw<#crate_name::BigEndian>),
-                            size: size.clone(),
-                        });
-                    }
-
-                    if let Some(offset) = &field_assertions.offset {
-                        assertions.extend(default_assert.generics.iter().map(|generics| {
-                            Assertion::Offset {
-                                container: container_ty(generics),
-                                field: field.clone(),
-                                offset: offset.clone(),
-                            }
-                        }));
-                    }
-                };
-
-                match &fields {
-                    Fields::Named(fields) => {
-                        for (ident, ty, field_assertions) in fields {
-                            add_assertions(ident.clone(), ty, field_assertions);
-                        }
-                    }
-                    Fields::Unnamed(fields) => {
-                        for (i, (ty, field_assertions)) in fields.iter().enumerate() {
-                            add_assertions(parse_quote!(#i), ty, field_assertions);
-                        }
-                    }
-                    _ => {}
-                };
 
                 ItemIr::Struct {
                     fields,
@@ -85,7 +25,6 @@ pub fn lower(model: DeriveModel) -> Result<Ir, Error> {
                         parse_quote!(#crate_name::zerocopy::Immutable),
                         parse_quote!(#crate_name::zerocopy::Unaligned),
                     ],
-                    assertions,
                     generics: StructGenerics::new(generics, &crate_name),
                 }
             }
@@ -93,18 +32,6 @@ pub fn lower(model: DeriveModel) -> Result<Ir, Error> {
         },
         crate_name,
     })
-}
-
-pub enum Assertion {
-    Size {
-        ty: Type,
-        size: Expr,
-    },
-    Offset {
-        container: Type,
-        field: Ident,
-        offset: Expr,
-    },
 }
 
 /// Intermediate representation of the output of the derive macro.
@@ -129,8 +56,6 @@ pub enum ItemIr {
         raw_ident: Ident,
         /// Derives to be added to the raw struct.
         raw_derives: Vec<Path>,
-        /// Assertions to apply to output.
-        assertions: Vec<Assertion>,
         /// Required generics.
         generics: StructGenerics,
     },
@@ -172,8 +97,6 @@ mod test {
     use proc_macro2::Span;
     use syn::Visibility;
 
-    use crate::FieldAssertions;
-
     use super::*;
 
     fn test_struct_ir(model: DeriveModel, expected_raw_ident: impl AsRef<str>) {
@@ -192,14 +115,8 @@ mod test {
                 name: Ident::new("MyStruct", Span::call_site()),
                 visibility: Visibility::Inherited,
                 item: DeriveModelItem::Struct {
-                    fields: Fields::Named(vec![(
-                        parse_quote!(a),
-                        parse_quote!(u64),
-                        FieldAssertions::default(),
-                    )]),
+                    fields: Fields::Named(vec![(parse_quote!(a), parse_quote!(u64))]),
                     generics: Default::default(),
-                    default_assert: Default::default(),
-                    namespace_assert: Default::default(),
                 },
             },
             "___CuisinerMyStructRaw",

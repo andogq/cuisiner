@@ -32,7 +32,6 @@ cuisiner_derive = { path = "cuisiner_derive", version = "0.0.4" }
 thiserror = "2.0.12"
 zerocopy = { version = "0.8.24", features = ["derive", "std"] }
 cuisiner_derive = { workspace = true }
-static_assertions = "1.1.0"
 assert_layout = "0.0.1"
 
 [dev-dependencies]

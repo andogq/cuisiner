@@ -4,7 +4,7 @@ mod lower;
 mod parse;
 
 use proc_macro2::TokenStream;
-use syn::{Attribute, DeriveInput, Error, Expr, Ident, Meta, Type};
+use syn::{DeriveInput, Error, Ident, Type};
 
 use self::{analyse::*, codegen::*, lower::*, parse::*};
 
@@ -34,9 +34,9 @@ fn derive_cuisiner_inner(derive_input: DeriveInput) -> Result<TokenStream, Error
 #[derive(Clone)]
 enum Fields {
     /// Named fields ([`syn::FieldsNamed`]).
-    Named(Vec<(Ident, Type, FieldAssertions)>),
+    Named(Vec<(Ident, Type)>),
     /// Unnamed fields ([`syn::FieldsUnnamed`]).
-    Unnamed(Vec<(Type, FieldAssertions)>),
+    Unnamed(Vec<Type>),
     /// No fields ([`syn::Fields::Unit`]).
     Unit,
 }
@@ -56,9 +56,8 @@ impl TryFrom<&syn::Fields> for Fields {
                             .clone()
                             .expect("named struct field must have ident");
                         let ty = field.ty.clone();
-                        let field_assertions = FieldAssertions::try_from(field.attrs.as_slice())?;
 
-                        Ok((ident, ty, field_assertions))
+                        Ok((ident, ty))
                     })
                     .collect::<Result<_, Error>>()?,
             ),
@@ -66,58 +65,10 @@ impl TryFrom<&syn::Fields> for Fields {
                 fields_unnamed
                     .unnamed
                     .iter()
-                    .map(|field| {
-                        Ok((
-                            field.ty.clone(),
-                            FieldAssertions::try_from(field.attrs.as_slice())?,
-                        ))
-                    })
+                    .map(|field| Ok(field.ty.clone()))
                     .collect::<Result<_, Error>>()?,
             ),
             syn::Fields::Unit => Fields::Unit,
         })
-    }
-}
-
-/// Optional assertions that can be applied to a field.
-#[derive(Clone, Default)]
-struct FieldAssertions {
-    /// Size of the field.
-    size: Option<Expr>,
-    /// Offset of the field.
-    offset: Option<Expr>,
-}
-
-impl TryFrom<&[Attribute]> for FieldAssertions {
-    type Error = Error;
-
-    fn try_from(attrs: &[Attribute]) -> Result<Self, Self::Error> {
-        let mut assertions = Self::default();
-
-        for attr in attrs {
-            if !attr.path().is_ident("cuisiner") {
-                continue;
-            }
-
-            let Meta::List(list) = &attr.meta else {
-                continue;
-            };
-
-            list.parse_nested_meta(|meta| {
-                if meta.path.is_ident("size") {
-                    assertions.size = Some(meta.value()?.parse()?);
-                    return Ok(());
-                }
-
-                if meta.path.is_ident("offset") {
-                    assertions.offset = Some(meta.value()?.parse()?);
-                    return Ok(());
-                }
-
-                Err(Error::new_spanned(meta.path, "unknown attribute"))
-            })?;
-        }
-
-        Ok(assertions)
     }
 }

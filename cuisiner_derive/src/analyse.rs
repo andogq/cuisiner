@@ -1,10 +1,5 @@
-use std::collections::HashMap;
-
 use proc_macro2::Span;
-use syn::{
-    Attribute, Error, Expr, ExprLit, GenericArgument, Generics, Ident, Lit, LitStr, Meta, Token,
-    Visibility, meta::ParseNestedMeta, punctuated::Punctuated,
-};
+use syn::{Attribute, Error, Expr, ExprLit, Generics, Ident, Lit, Meta, Visibility};
 
 use crate::{Ast, Fields};
 
@@ -20,8 +15,6 @@ pub fn analyse(ast: Ast) -> Result<DeriveModel, Error> {
             item: DeriveModelItem::Struct {
                 fields: Fields::try_from(&item_struct.fields)?,
                 generics: item_struct.generics,
-                default_assert: config.default_assert,
-                namespace_assert: config.namespace_assert,
             },
         },
         Ast::Enum(item_enum) => DeriveModel {
@@ -93,8 +86,6 @@ pub enum DeriveModelItem {
         fields: Fields,
         /// Generics present on the original struct.
         generics: Generics,
-        default_assert: AssertConfig,
-        namespace_assert: HashMap<String, AssertConfig>,
     },
     Enum {
         /// All variants and their discriminant values.
@@ -109,38 +100,6 @@ pub enum DeriveModelItem {
 #[cfg_attr(test, derive(Debug, PartialEq, Eq))]
 struct DeriveConfig {
     repr: Option<Repr>,
-    default_assert: AssertConfig,
-    namespace_assert: HashMap<String, AssertConfig>,
-}
-
-/// Container assertions that can be provided via an attribute.
-#[derive(Clone, Default)]
-#[cfg_attr(test, derive(Debug, PartialEq, Eq))]
-pub struct AssertConfig {
-    pub size: Option<Expr>,
-    pub generics: Vec<Vec<GenericArgument>>,
-}
-
-impl AssertConfig {
-    fn try_parse_meta(&mut self, meta: &ParseNestedMeta) -> Result<bool, Error> {
-        if meta.path.is_ident("assert_size") {
-            self.size = Some(meta.value()?.parse()?);
-
-            return Ok(true);
-        }
-
-        if meta.path.is_ident("assert_generics") {
-            let assert_generics_str = meta.value()?.parse::<LitStr>()?;
-            let assert_generics = assert_generics_str
-                .parse_with(Punctuated::<GenericArgument, Token![,]>::parse_terminated)?;
-
-            self.generics.push(assert_generics.into_iter().collect());
-
-            return Ok(true);
-        }
-
-        Ok(false)
-    }
 }
 
 impl TryFrom<&[Attribute]> for DeriveConfig {
@@ -170,25 +129,7 @@ impl TryFrom<&[Attribute]> for DeriveConfig {
                     return Ok(());
                 }
 
-                if config.default_assert.try_parse_meta(&meta)? {
-                    return Ok(());
-                }
-
-                // Try to parse as a namespaced assertion
-                let nested_name = meta.path.require_ident()?.to_string();
-                let mut nested_assert_config = AssertConfig::default();
-                meta.parse_nested_meta(|meta| {
-                    if nested_assert_config.try_parse_meta(&meta)? {
-                        return Ok(());
-                    }
-
-                    Err(Error::new_spanned(meta.path, "unknown attribute argument"))
-                })?;
-                config
-                    .namespace_assert
-                    .insert(nested_name, nested_assert_config);
-
-                Ok(())
+                Err(Error::new_spanned(meta.path, "unknown attribute argument"))
             })?;
         }
 
@@ -255,8 +196,6 @@ mod test {
         let DeriveModelItem::Struct {
             fields,
             generics: _,
-            default_assert,
-            namespace_assert: _,
         } = &model.item
         else {
             panic!("expected struct derive model item");
@@ -271,7 +210,6 @@ mod test {
             },
             expected_field_count
         );
-        assert_eq!(default_assert.size, expected_assert_size);
     }
 
     fn test_analyse_enum(ast: Ast, expected_repr: Repr, expected_variants: &[(Ident, usize)]) {
@@ -320,22 +258,6 @@ mod test {
             "MyStruct",
             Some(2),
             None,
-        );
-    }
-
-    #[test]
-    fn analyse_valid_struct_with_size_assert() {
-        test_analyse_struct(
-            Ast::Struct(parse_quote! {
-                #[cuisiner(assert_size = 5)]
-                struct MyStruct {
-                    a: u32,
-                    b: bool,
-                }
-            }),
-            "MyStruct",
-            Some(2),
-            Some(parse_quote!(5)),
         );
     }
 
@@ -462,121 +384,6 @@ mod test {
                 .unwrap(),
                 DeriveConfig::default()
             );
-        }
-
-        mod assert_generics {
-            use super::*;
-
-            #[test]
-            fn none() {
-                assert_eq!(
-                    DeriveConfig::try_from(
-                        [parse_quote!(#[cuisiner(assert_generics = "")])].as_slice()
-                    )
-                    .unwrap(),
-                    DeriveConfig {
-                        default_assert: AssertConfig {
-                            generics: vec![vec![]],
-                            ..Default::default()
-                        },
-                        ..Default::default()
-                    }
-                )
-            }
-
-            #[test]
-            fn one() {
-                assert_eq!(
-                    DeriveConfig::try_from(
-                        [parse_quote!(#[cuisiner(assert_generics = "SomeType")])].as_slice()
-                    )
-                    .unwrap(),
-                    DeriveConfig {
-                        default_assert: AssertConfig {
-                            generics: vec![vec![parse_quote!(SomeType)]],
-                            ..Default::default()
-                        },
-                        ..Default::default()
-                    }
-                )
-            }
-
-            #[test]
-            fn many() {
-                assert_eq!(
-                    DeriveConfig::try_from(
-                        [parse_quote!(#[cuisiner(assert_generics = "'static, SomeType, u64")])]
-                            .as_slice()
-                    )
-                    .unwrap(),
-                    DeriveConfig {
-                        default_assert: AssertConfig {
-                            generics: vec![vec![
-                                parse_quote!('static),
-                                parse_quote!(SomeType),
-                                parse_quote!(u64)
-                            ]],
-                            ..Default::default()
-                        },
-                        ..Default::default()
-                    }
-                )
-            }
-
-            #[test]
-            fn namespaced() {
-                assert_eq!(
-                    DeriveConfig::try_from(
-                        [parse_quote!(#[cuisiner(some_namespace(assert_generics = "'static, SomeType, u64"))])]
-                            .as_slice()
-                    )
-                    .unwrap(),
-                    DeriveConfig {
-                        namespace_assert: [("some_namespace".into(), AssertConfig {
-                            generics: vec![vec![
-                                parse_quote!('static),
-                                parse_quote!(SomeType),
-                                parse_quote!(u64)
-                            ]],
-                            ..Default::default()
-                        })].into_iter().collect(),
-                        ..Default::default()
-                    }
-                )
-            }
-
-            #[test]
-            fn multiple_namespaced() {
-                assert_eq!(
-                    DeriveConfig::try_from(
-                        [
-                            parse_quote!(#[cuisiner(some_namespace(assert_generics = "'static, SomeType, u64"))]),
-                            parse_quote!(#[cuisiner(something(assert_generics = "bool, T", assert_size = 123))])
-                        ]
-                            .as_slice()
-                    )
-                        .unwrap(),
-                    DeriveConfig {
-                        namespace_assert: [
-                            ("some_namespace".into(), AssertConfig {
-                                generics: vec![vec![
-                                    parse_quote!('static),
-                                    parse_quote!(SomeType),
-                                    parse_quote!(u64)
-                                ]],
-                                ..Default::default()
-                            }),
-                            ("something".into(), AssertConfig {
-                                generics: vec![vec![
-                                    parse_quote!(bool),
-                                    parse_quote!(T)
-                                ]],
-                                size: Some(parse_quote!(123))
-                            })].into_iter().collect(),
-                        ..Default::default()
-                    }
-                )
-            }
         }
 
         #[test]

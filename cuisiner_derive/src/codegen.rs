@@ -2,7 +2,7 @@ use proc_macro2::{Span, TokenStream};
 use quote::quote;
 use syn::{Error, Index, LitInt};
 
-use crate::{Assertion, Fields, Ir, ItemIr, Repr, StructGenerics};
+use crate::{Fields, Ir, ItemIr, Repr, StructGenerics};
 
 pub fn codegen(ir: Ir) -> Result<TokenStream, Error> {
     let Ir {
@@ -20,7 +20,6 @@ pub fn codegen(ir: Ir) -> Result<TokenStream, Error> {
             fields,
             raw_ident,
             raw_derives,
-            assertions,
             generics,
         } => {
             let StructGenerics {
@@ -34,8 +33,7 @@ pub fn codegen(ir: Ir) -> Result<TokenStream, Error> {
 
             let (field_definitions, from_raws, to_raws) = match fields {
                 Fields::Named(fields) => {
-                    let (names, tys): (Vec<_>, Vec<_>) =
-                        fields.iter().map(|(name, ty, _)| (name, ty)).unzip();
+                    let (names, tys): (Vec<_>, Vec<_>) = fields.into_iter().unzip();
 
                     (
                         quote! {
@@ -53,13 +51,11 @@ pub fn codegen(ir: Ir) -> Result<TokenStream, Error> {
                     let fields = fields
                         .into_iter()
                         .enumerate()
-                        .map(|(name, (ty, field_assertions))| {
-                            (Index::from(name), ty, field_assertions)
-                        })
+                        .map(|(name, ty)| (Index::from(name), ty))
                         .collect::<Vec<_>>();
 
                     let (names, tys): (Vec<_>, Vec<_>) =
-                        fields.iter().map(|(name, ty, _)| (name, ty)).unzip();
+                        fields.iter().map(|(name, ty)| (name, ty)).unzip();
 
                     (
                         quote! {
@@ -75,32 +71,6 @@ pub fn codegen(ir: Ir) -> Result<TokenStream, Error> {
                 }
                 Fields::Unit => (quote!(;), quote!(;), quote!(;)),
             };
-
-            let assertions = assertions
-                .into_iter()
-                .map(|assertion| match assertion {
-                    Assertion::Size { ty, size } => {
-                        quote! {
-                            #crate_name::static_assertions::const_assert_eq!(
-                                ::core::mem::size_of::<#ty>(),
-                                #size
-                            );
-                        }
-                    }
-                    Assertion::Offset {
-                        container,
-                        field,
-                        offset,
-                    } => {
-                        quote! {
-                            #crate_name::static_assertions::const_assert_eq!(
-                                ::core::mem::offset_of!(#container, #field),
-                                #offset
-                            );
-                        }
-                    }
-                })
-                .collect::<TokenStream>();
 
             Ok(quote! {
                 #[derive(#(#raw_derives),*)]
@@ -121,8 +91,6 @@ pub fn codegen(ir: Ir) -> Result<TokenStream, Error> {
                         Ok(Self::Raw #to_raws)
                     }
                 }
-
-                #assertions
             })
         }
         ItemIr::Enum { variants, repr } => {

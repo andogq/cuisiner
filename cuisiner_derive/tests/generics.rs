@@ -4,7 +4,6 @@ mod primitive {
     use super::*;
 
     #[derive(Cuisiner)]
-    #[cuisiner(assert_size = 2, assert_generics = "i16", assert_generics = "u16")]
     struct Primitive<T: Cuisiner> {
         value: T,
     }

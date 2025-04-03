@@ -4,7 +4,7 @@ mod lower;
 mod parse;
 
 use proc_macro2::TokenStream;
-use syn::{DeriveInput, Error, Ident, Type};
+use syn::{DeriveInput, Error, Ident, Type, parenthesized};
 
 use self::{analyse::*, codegen::*, lower::*, parse::*};
 
@@ -34,9 +34,9 @@ fn derive_cuisiner_inner(derive_input: DeriveInput) -> Result<TokenStream, Error
 #[derive(Clone)]
 enum Fields {
     /// Named fields ([`syn::FieldsNamed`]).
-    Named(Vec<(Ident, Type)>),
+    Named(Vec<(Ident, Type, Option<TokenStream>)>),
     /// Unnamed fields ([`syn::FieldsUnnamed`]).
-    Unnamed(Vec<Type>),
+    Unnamed(Vec<(Type, Option<TokenStream>)>),
     /// No fields ([`syn::Fields::Unit`]).
     Unit,
 }
@@ -57,7 +57,26 @@ impl TryFrom<&syn::Fields> for Fields {
                             .expect("named struct field must have ident");
                         let ty = field.ty.clone();
 
-                        Ok((ident, ty))
+                        let mut assert_layout = None;
+                        for attr in &field.attrs {
+                            if !attr.path().is_ident("cuisiner") {
+                                continue;
+                            }
+
+                            attr.parse_nested_meta(|meta| {
+                                if meta.path.is_ident("assert") {
+                                    let args;
+                                    parenthesized!(args in meta.input);
+                                    assert_layout = Some(args.parse()?);
+
+                                    return Ok(());
+                                }
+
+                                Err(Error::new_spanned(&meta.path, "unknown attribute"))
+                            })?;
+                        }
+
+                        Ok((ident, ty, assert_layout))
                     })
                     .collect::<Result<_, Error>>()?,
             ),
@@ -65,7 +84,27 @@ impl TryFrom<&syn::Fields> for Fields {
                 fields_unnamed
                     .unnamed
                     .iter()
-                    .map(|field| Ok(field.ty.clone()))
+                    .map(|field| {
+                        Ok((field.ty.clone(), {
+                            let mut assert_layout = None;
+                            for attr in &field.attrs {
+                                if !attr.path().is_ident("cuisiner") {
+                                    continue;
+                                }
+
+                                attr.parse_nested_meta(|meta| {
+                                    if meta.path.is_ident("assert") {
+                                        let args;
+                                        parenthesized!(args in meta.input);
+                                        assert_layout = Some(args.parse()?);
+                                    }
+
+                                    Err(Error::new_spanned(&meta.path, "unknown attribute"))
+                                })?;
+                            }
+                            assert_layout
+                        }))
+                    })
                     .collect::<Result<_, Error>>()?,
             ),
             syn::Fields::Unit => Fields::Unit,

@@ -1,5 +1,5 @@
-use proc_macro2::Span;
-use syn::{Attribute, Error, Expr, ExprLit, Generics, Ident, Lit, Meta, Visibility};
+use proc_macro2::{Span, TokenStream};
+use syn::{Attribute, Error, Expr, ExprLit, Generics, Ident, Lit, Meta, Visibility, parenthesized};
 
 use crate::{Ast, Fields};
 
@@ -15,6 +15,7 @@ pub fn analyse(ast: Ast) -> Result<DeriveModel, Error> {
             item: DeriveModelItem::Struct {
                 fields: Fields::try_from(&item_struct.fields)?,
                 generics: item_struct.generics,
+                container_assert_layout: config.container_assert_layout,
             },
         },
         Ast::Enum(item_enum) => DeriveModel {
@@ -86,6 +87,7 @@ pub enum DeriveModelItem {
         fields: Fields,
         /// Generics present on the original struct.
         generics: Generics,
+        container_assert_layout: Option<TokenStream>,
     },
     Enum {
         /// All variants and their discriminant values.
@@ -97,10 +99,21 @@ pub enum DeriveModelItem {
 
 /// Configuration provided via attributes.
 #[derive(Clone, Default)]
-#[cfg_attr(test, derive(Debug, PartialEq, Eq))]
+#[cfg_attr(test, derive(Debug))]
 struct DeriveConfig {
     repr: Option<Repr>,
+    container_assert_layout: Option<TokenStream>,
 }
+
+#[cfg(test)]
+impl PartialEq for DeriveConfig {
+    fn eq(&self, other: &Self) -> bool {
+        self.repr == other.repr
+    }
+}
+
+#[cfg(test)]
+impl Eq for DeriveConfig {}
 
 impl TryFrom<&[Attribute]> for DeriveConfig {
     type Error = Error;
@@ -125,6 +138,14 @@ impl TryFrom<&[Attribute]> for DeriveConfig {
                     config.repr = Some(Repr::try_from(
                         meta.value()?.parse::<Ident>()?.to_string().as_str(),
                     )?);
+
+                    return Ok(());
+                }
+
+                if meta.path.is_ident("assert") {
+                    let attrs;
+                    parenthesized!(attrs in meta.input);
+                    config.container_assert_layout = Some(attrs.parse()?);
 
                     return Ok(());
                 }
@@ -189,13 +210,13 @@ mod test {
         ast: Ast,
         expected_name: impl AsRef<str>,
         expected_field_count: Option<usize>,
-        expected_assert_size: Option<Expr>,
     ) {
         let model = analyse(ast).unwrap();
 
         let DeriveModelItem::Struct {
             fields,
             generics: _,
+            container_assert_layout: _,
         } = &model.item
         else {
             panic!("expected struct derive model item");
@@ -230,7 +251,6 @@ mod test {
             }),
             "MyStruct",
             None,
-            None,
         );
     }
 
@@ -242,7 +262,6 @@ mod test {
             }),
             "MyStruct",
             Some(1),
-            None,
         );
     }
 
@@ -257,7 +276,6 @@ mod test {
             }),
             "MyStruct",
             Some(2),
-            None,
         );
     }
 

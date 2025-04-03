@@ -6,6 +6,7 @@ mod util;
 use thiserror::Error;
 use zerocopy::{FromBytes, Immutable, IntoBytes, Unaligned};
 
+pub use assert_layout::assert_layout;
 pub use cuisiner_derive::Cuisiner;
 pub use zerocopy::{self, BigEndian, ByteOrder, LittleEndian, NativeEndian, NetworkEndian};
 

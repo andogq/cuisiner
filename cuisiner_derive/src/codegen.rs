@@ -21,6 +21,7 @@ pub fn codegen(ir: Ir) -> Result<TokenStream, Error> {
             raw_ident,
             raw_derives,
             generics,
+            container_assert_layout,
         } => {
             let StructGenerics {
                 base: base_generics,
@@ -31,13 +32,33 @@ pub fn codegen(ir: Ir) -> Result<TokenStream, Error> {
             let (impl_generics, ty_generics, where_clause) = base_generics.split_for_impl();
             let (_, raw_ty_generics, raw_where_clause) = raw_generics.split_for_impl();
 
+            let container_assert_layout = container_assert_layout.map(|assert| {
+                quote! { #[#crate_name::assert_layout(#assert)] }
+            });
+
             let (field_definitions, from_raws, to_raws) = match fields {
                 Fields::Named(fields) => {
-                    let (names, tys): (Vec<_>, Vec<_>) = fields.into_iter().unzip();
+                    let fields_len = fields.len();
+                    let (names, tys, assertions) = fields.into_iter().fold(
+                        (
+                            Vec::with_capacity(fields_len),
+                            Vec::with_capacity(fields_len),
+                            Vec::with_capacity(fields_len),
+                        ),
+                        |(mut names, mut tys, mut assertions), (name, ty, assertion)| {
+                            names.push(name);
+                            tys.push(ty);
+                            assertions.push(assertion.map(|assertion| {
+                                quote! { #[assert_layout(#assertion)] }
+                            }));
+
+                            (names, tys, assertions)
+                        },
+                    );
 
                     (
                         quote! {
-                            { #(#names: <#tys as #crate_name::Cuisiner>::Raw::<#b_generic_ident>),* }
+                            { #(#assertions #names: <#tys as #crate_name::Cuisiner>::Raw::<#b_generic_ident>),* }
                         },
                         quote! {
                             { #(#names: <#tys as #crate_name::Cuisiner>::try_from_raw::<#b_generic_ident>(raw.#names)?),* }
@@ -48,18 +69,27 @@ pub fn codegen(ir: Ir) -> Result<TokenStream, Error> {
                     )
                 }
                 Fields::Unnamed(fields) => {
-                    let fields = fields
-                        .into_iter()
-                        .enumerate()
-                        .map(|(name, ty)| (Index::from(name), ty))
-                        .collect::<Vec<_>>();
+                    let fields_len = fields.len();
+                    let (names, tys, assertions) = fields.iter().enumerate().fold(
+                        (
+                            Vec::with_capacity(fields_len),
+                            Vec::with_capacity(fields_len),
+                            Vec::with_capacity(fields_len),
+                        ),
+                        |(mut names, mut tys, mut assertions), (name, (ty, assertion))| {
+                            names.push(Index::from(name));
+                            tys.push(ty);
+                            assertions.push(assertion.as_ref().map(|assertion| {
+                                quote! { #[assert_layout(#assertion)] }
+                            }));
 
-                    let (names, tys): (Vec<_>, Vec<_>) =
-                        fields.iter().map(|(name, ty)| (name, ty)).unzip();
+                            (names, tys, assertions)
+                        },
+                    );
 
                     (
                         quote! {
-                            (#(#tys),*);
+                            (#(#assertions #tys),*);
                         },
                         quote! {
                             (#(<#tys as #crate_name::Cuisiner>::try_from_raw(raw.#names)?),*);
@@ -77,6 +107,7 @@ pub fn codegen(ir: Ir) -> Result<TokenStream, Error> {
                 #[repr(C)]
                 #[zerocopy(crate = #zerocopy_crate)]
                 #[automatically_derived]
+                #container_assert_layout
                 #visibility struct #raw_ident #raw_generics #raw_where_clause #field_definitions
 
                 #[automatically_derived]

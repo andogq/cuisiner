@@ -11,7 +11,11 @@ pub fn lower(model: DeriveModel) -> Result<Ir, Error> {
         base_ident: model.name.clone(),
         visibility: model.visibility,
         item: match model.item {
-            DeriveModelItem::Struct { fields, generics } => {
+            DeriveModelItem::Struct {
+                fields,
+                generics,
+                container_assert_layout,
+            } => {
                 let raw_ident = format!("___Cuisiner{}Raw", model.name);
                 let raw_ident_tokens: TokenStream = raw_ident.parse()?;
                 let raw_ident: Ident = parse2(raw_ident_tokens.clone())?;
@@ -26,6 +30,7 @@ pub fn lower(model: DeriveModel) -> Result<Ir, Error> {
                         parse_quote!(#crate_name::zerocopy::Unaligned),
                     ],
                     generics: StructGenerics::new(generics, &crate_name),
+                    container_assert_layout,
                 }
             }
             DeriveModelItem::Enum { variants, repr } => ItemIr::Enum { repr, variants },
@@ -58,6 +63,7 @@ pub enum ItemIr {
         raw_derives: Vec<Path>,
         /// Required generics.
         generics: StructGenerics,
+        container_assert_layout: Option<TokenStream>,
     },
     /// Enum IR.
     Enum {
@@ -115,8 +121,9 @@ mod test {
                 name: Ident::new("MyStruct", Span::call_site()),
                 visibility: Visibility::Inherited,
                 item: DeriveModelItem::Struct {
-                    fields: Fields::Named(vec![(parse_quote!(a), parse_quote!(u64))]),
+                    fields: Fields::Named(vec![(parse_quote!(a), parse_quote!(u64), None)]),
                     generics: Default::default(),
+                    container_assert_layout: None,
                 },
             },
             "___CuisinerMyStructRaw",

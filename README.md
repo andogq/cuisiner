@@ -16,3 +16,10 @@ representation.
 ## Example
 
 See [`sqlite-header.rs`](./tests/sqlite-header.rs) for an example.
+
+## Todo
+
+- [ ] Mirror `zerocopy`'s API for reading to/from bytes (`read_prefix`, `read_suffix`, etc)
+
+- [ ] Add support for reading from `Readable`
+

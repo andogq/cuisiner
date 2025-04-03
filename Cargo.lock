@@ -4,7 +4,9 @@ version = 4
 
 [[package]]
 name = "assert_layout"
-version = "0.0.4"
+version = "0.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7a90355884448f2cbc9ded8923c8573f7aeeb59986d6204ece64753b4cfe8c01"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -48,6 +50,7 @@ checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 name = "cuisiner"
 version = "0.0.4"
 dependencies = [
+ "assert_layout",
  "cuisiner_derive",
  "proptest",
  "static_assertions",

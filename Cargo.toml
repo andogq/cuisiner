@@ -7,9 +7,12 @@ description = "Cook up some conversions to and from C-style binary layouts."
 repository.workspace = true
 license.workspace = true
 
+keywords.workspace = true
+categories.workspace = true
+
 [workspace]
 resolver = "2"
-members = [ "assert_layout","cuisiner_derive"]
+members = ["cuisiner_derive"]
 
 [workspace.package]
 version = "0.0.4"
@@ -30,6 +33,7 @@ thiserror = "2.0.12"
 zerocopy = { version = "0.8.24", features = ["derive", "std"] }
 cuisiner_derive = { workspace = true }
 static_assertions = "1.1.0"
+assert_layout = "0.0.1"
 
 [dev-dependencies]
 proptest = "1.6.0"

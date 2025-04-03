@@ -70,8 +70,27 @@ impl NestedTrait for u64 {
     type Nested = u16;
 }
 
-#[assert_layout(generics = "u8", size = 1, namespace(generics = "u16", size = 2))]
+#[assert_layout(generics = "u8", size = 5, big(generics = "u16", size = 6))]
 #[repr(C, packed)]
 struct NamespacedStruct<T> {
+    #[assert_layout(offset = 0, size = 1, big(offset = 0, size = 2))]
     thing: T,
+
+    #[assert_layout(offset = 1, size = 4, big(offset = 2, size = 4))]
+    another: u32,
+}
+
+#[assert_layout(
+    generics = "u8",
+    generics = "u16",
+    little(generics = "u8", size = 5),
+    big(generics = "u16", size = 6)
+)]
+#[repr(C, packed)]
+struct NamespacedStruct2<T> {
+    #[assert_layout(offset = 0, little(size = 1), big(size = 2))]
+    thing: T,
+
+    #[assert_layout(size = 4, little(offset = 1), big(offset = 2))]
+    another: u32,
 }

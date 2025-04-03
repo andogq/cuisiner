@@ -6,7 +6,7 @@ use std::{
 use proc_macro2::Span;
 use syn::{
     Error, Expr, ExprLit, GenericArgument, ItemStruct, Lit, Member, Meta, Token, Type,
-    punctuated::Punctuated, spanned::Spanned,
+    meta::ParseNestedMeta, punctuated::Punctuated, spanned::Spanned,
 };
 
 pub fn parse(attrs: impl IntoIterator<Item = Meta>, item: ItemStruct) -> Result<Ast, Error> {
@@ -14,6 +14,11 @@ pub fn parse(attrs: impl IntoIterator<Item = Meta>, item: ItemStruct) -> Result<
         item,
         namespaces: HashMap::new(),
     };
+
+    let (default_namespace, nested) = parse_namespace(attrs)?;
+
+    ast.namespaces.insert("".to_string(), default_namespace);
+    ast.namespaces.extend(nested);
 
     // Process attributes on fields.
     ast.item
@@ -35,14 +40,17 @@ pub fn parse(attrs: impl IntoIterator<Item = Meta>, item: ItemStruct) -> Result<
                         return Ok::<_, Error>(attrs);
                     }
 
-                    let mut assertion = FieldAssertion {
+                    let mut default_assertion = FieldAssertion {
                         field: field_ident.clone(),
                         ty: field.ty.clone(),
                         size: None,
                         offset: None,
                     };
 
-                    attr.parse_nested_meta(|meta| {
+                    fn parse_attr(
+                        assertion: &mut FieldAssertion,
+                        meta: &ParseNestedMeta,
+                    ) -> Result<(), Error> {
                         match meta.path.require_ident()?.to_string().as_str() {
                             "size" => {
                                 assertion.size = Some(meta.value()?.parse()?);
@@ -52,22 +60,50 @@ pub fn parse(attrs: impl IntoIterator<Item = Meta>, item: ItemStruct) -> Result<
                             }
                             attr_name => {
                                 return Err(Error::new_spanned(
-                                    meta.path,
+                                    &meta.path,
                                     format!("unknown attribute: {attr_name}"),
                                 ));
                             }
                         }
 
                         Ok(())
+                    }
+
+                    attr.parse_nested_meta(|meta| {
+                        // Try parse default assertion
+                        if parse_attr(&mut default_assertion, &meta).is_ok() {
+                            return Ok(());
+                        }
+
+                        // Attempt to pull out the namespace
+                        let namespace_key = meta.path.require_ident()?.to_string();
+                        let namespace =
+                            ast.namespaces
+                                .get_mut(&namespace_key)
+                                .ok_or(Error::new_spanned(
+                                    &meta.path,
+                                    format!("unknown namespace: {namespace_key}"),
+                                ))?;
+
+                        let mut assertion = FieldAssertion {
+                            field: default_assertion.field.clone(),
+                            ty: default_assertion.ty.clone(),
+                            size: None,
+                            offset: None,
+                        };
+
+                        meta.parse_nested_meta(|meta| parse_attr(&mut assertion, &meta))?;
+
+                        namespace.field_assertions.push(assertion);
+
+                        Ok(())
                     })?;
 
-                    // TODO: Select the correct namespace
-                    let namespace = "".to_string();
                     ast.namespaces
-                        .entry(namespace)
+                        .entry("".to_string())
                         .or_default()
                         .field_assertions
-                        .push(assertion);
+                        .push(default_assertion);
 
                     Ok(attrs)
                 },
@@ -75,11 +111,6 @@ pub fn parse(attrs: impl IntoIterator<Item = Meta>, item: ItemStruct) -> Result<
 
             Ok::<_, Error>(())
         })?;
-
-    let (namespace, nested) = parse_namespace(attrs)?;
-
-    ast.namespaces.insert("".to_string(), namespace);
-    ast.namespaces.extend(nested);
 
     Ok(ast)
 }

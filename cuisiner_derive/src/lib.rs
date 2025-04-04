@@ -4,7 +4,7 @@ mod lower;
 mod parse;
 
 use proc_macro2::TokenStream;
-use syn::{DeriveInput, Error, Ident, Type, parenthesized};
+use syn::{DeriveInput, Error, Ident, Meta, Token, Type, parenthesized, punctuated::Punctuated};
 
 use self::{analyse::*, codegen::*, lower::*, parse::*};
 
@@ -34,9 +34,9 @@ fn derive_cuisiner_inner(derive_input: DeriveInput) -> Result<TokenStream, Error
 #[derive(Clone)]
 enum Fields {
     /// Named fields ([`syn::FieldsNamed`]).
-    Named(Vec<(Ident, Type, Option<TokenStream>)>),
+    Named(Vec<(Ident, Type, Option<Vec<Meta>>)>),
     /// Unnamed fields ([`syn::FieldsUnnamed`]).
-    Unnamed(Vec<(Type, Option<TokenStream>)>),
+    Unnamed(Vec<(Type, Option<Vec<Meta>>)>),
     /// No fields ([`syn::Fields::Unit`]).
     Unit,
 }
@@ -65,9 +65,16 @@ impl TryFrom<&syn::Fields> for Fields {
 
                             attr.parse_nested_meta(|meta| {
                                 if meta.path.is_ident("assert") {
+                                    // Remove the parenthesis.
                                     let args;
                                     parenthesized!(args in meta.input);
-                                    assert_layout = Some(args.parse()?);
+
+                                    // Fetch the meta items from the attributes.
+                                    assert_layout = Some(
+                                        Punctuated::<Meta, Token![,]>::parse_terminated(&args)?
+                                            .into_iter()
+                                            .collect(),
+                                    );
 
                                     return Ok(());
                                 }
@@ -94,9 +101,18 @@ impl TryFrom<&syn::Fields> for Fields {
 
                                 attr.parse_nested_meta(|meta| {
                                     if meta.path.is_ident("assert") {
+                                        // Remove the parenthesis.
                                         let args;
                                         parenthesized!(args in meta.input);
-                                        assert_layout = Some(args.parse()?);
+
+                                        // Fetch the meta items from the attributes.
+                                        assert_layout = Some(
+                                            Punctuated::<Meta, Token![,]>::parse_terminated(&args)?
+                                                .into_iter()
+                                                .collect(),
+                                        );
+
+                                        return Ok(());
                                     }
 
                                     Err(Error::new_spanned(&meta.path, "unknown attribute"))

@@ -32,8 +32,8 @@ pub fn codegen(ir: Ir) -> Result<TokenStream, Error> {
             let (impl_generics, ty_generics, where_clause) = base_generics.split_for_impl();
             let (_, raw_ty_generics, raw_where_clause) = raw_generics.split_for_impl();
 
-            let container_assert_layout = container_assert_layout.map(|assert| {
-                quote! { #[#crate_name::assert_layout(#assert)] }
+            let container_assert_layout = container_assert_layout.map(|metas| {
+                quote! { #[#crate_name::assert_layout(#(#metas,)*)] }
             });
 
             let (field_definitions, from_raws, to_raws) = match fields {
@@ -48,8 +48,8 @@ pub fn codegen(ir: Ir) -> Result<TokenStream, Error> {
                         |(mut names, mut tys, mut assertions), (name, ty, assertion)| {
                             names.push(name);
                             tys.push(ty);
-                            assertions.push(assertion.map(|assertion| {
-                                quote! { #[assert_layout(#assertion)] }
+                            assertions.push(assertion.map(|metas| {
+                                quote! { #[assert_layout(#(#metas,)*)] }
                             }));
 
                             (names, tys, assertions)
@@ -79,8 +79,8 @@ pub fn codegen(ir: Ir) -> Result<TokenStream, Error> {
                         |(mut names, mut tys, mut assertions), (name, (ty, assertion))| {
                             names.push(Index::from(name));
                             tys.push(ty);
-                            assertions.push(assertion.as_ref().map(|assertion| {
-                                quote! { #[assert_layout(#assertion)] }
+                            assertions.push(assertion.as_ref().map(|metas| {
+                                quote! { #[assert_layout(#(#metas,)*)] }
                             }));
 
                             (names, tys, assertions)

@@ -4,7 +4,25 @@ mod primitive {
     use super::*;
 
     #[derive(Cuisiner)]
+    #[cuisiner(assert(size = 1, generics = "u8"))]
     struct Primitive<T: Cuisiner> {
+        #[cuisiner(assert(size = 1, offset = 0))]
+        value: T,
+    }
+
+    #[derive(Cuisiner)]
+    #[cuisiner(assert(size = 3, generics = "u8, u16"))]
+    struct DoublePrimitive<T: Cuisiner, U: Cuisiner> {
+        #[cuisiner(assert(size = 1, offset = 0))]
+        value: T,
+        #[cuisiner(assert(size = 2, offset = 1))]
+        value2: U,
+    }
+
+    #[derive(Cuisiner)]
+    #[cuisiner(assert(small(generics = "u8", size = 1), big(generics = "u16", size = 2)))]
+    struct Namespaced<T: Cuisiner> {
+        #[cuisiner(assert(small(offset = 0, size = 1), big(offset = 0, size = 2)))]
         value: T,
     }
 }

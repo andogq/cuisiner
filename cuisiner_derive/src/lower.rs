@@ -1,5 +1,9 @@
 use proc_macro2::TokenStream;
-use syn::{Error, GenericParam, Generics, Ident, Path, Visibility, parse_quote, parse2};
+use quote::ToTokens;
+use syn::{
+    Error, Expr, ExprLit, GenericArgument, GenericParam, Generics, Ident, Lit, Meta, Path, Token,
+    Visibility, parse_quote, parse_quote_spanned, parse2, punctuated::Punctuated, spanned::Spanned,
+};
 
 use crate::{DeriveModel, DeriveModelItem, Fields, Repr};
 
@@ -19,6 +23,7 @@ pub fn lower(model: DeriveModel) -> Result<Ir, Error> {
                 let raw_ident = format!("___Cuisiner{}Raw", model.name);
                 let raw_ident_tokens: TokenStream = raw_ident.parse()?;
                 let raw_ident: Ident = parse2(raw_ident_tokens.clone())?;
+                let extra_generic: GenericArgument = parse_quote!(#crate_name::BigEndian);
 
                 ItemIr::Struct {
                     fields,
@@ -29,8 +34,16 @@ pub fn lower(model: DeriveModel) -> Result<Ir, Error> {
                         parse_quote!(#crate_name::zerocopy::Immutable),
                         parse_quote!(#crate_name::zerocopy::Unaligned),
                     ],
+                    container_assert_layout: container_assert_layout.map(
+                        |container_assert_layout| {
+                            extend_assert_generics(
+                                container_assert_layout,
+                                extra_generic.clone(),
+                                generics.params.len(),
+                            )
+                        },
+                    ),
                     generics: StructGenerics::new(generics, &crate_name),
-                    container_assert_layout,
                 }
             }
             DeriveModelItem::Enum { variants, repr } => ItemIr::Enum { repr, variants },
@@ -63,7 +76,7 @@ pub enum ItemIr {
         raw_derives: Vec<Path>,
         /// Required generics.
         generics: StructGenerics,
-        container_assert_layout: Option<TokenStream>,
+        container_assert_layout: Option<Vec<Meta>>,
     },
     /// Enum IR.
     Enum {
@@ -98,12 +111,80 @@ impl StructGenerics {
     }
 }
 
+/// Traverses the provided attributes, to try find a `generics` attribute. If it doesn't exist, one
+/// will be created. The `extra_generic` will be added to the generics list, and the modified
+/// attributes will be returned.
+fn extend_assert_generics(
+    mut attrs: Vec<Meta>,
+    extra_generic: GenericArgument,
+    container_generic_count: usize,
+) -> Vec<Meta> {
+    let generics_count = attrs
+        .iter_mut()
+        // Pull out all `generics` attributes
+        .filter_map(|attr| {
+            if let Meta::List(list) = attr {
+                let path = &list.path;
+                let metas = extend_assert_generics(
+                    list.parse_args_with(Punctuated::<Meta, Token![,]>::parse_terminated)
+                        .ok()?
+                        .into_iter()
+                        .collect(),
+                    extra_generic.clone(),
+                    container_generic_count,
+                );
+
+                *list = parse_quote_spanned! { list.span() => #path(#(#metas),*) };
+
+                return None;
+            }
+
+            let Meta::NameValue(attr) = attr else {
+                return None;
+            };
+
+            if !attr.path.is_ident("generics") {
+                return None;
+            }
+
+            let Expr::Lit(ExprLit {
+                lit: Lit::Str(generics_lit),
+                ..
+            }) = &mut attr.value
+            else {
+                return None;
+            };
+
+            let generics = generics_lit
+                .parse_with(Punctuated::<GenericArgument, Token![,]>::parse_terminated)
+                .ok()?;
+
+            Some((generics_lit, generics))
+        })
+        // Update the literal with the updated generics
+        .map(|(generics_lit, mut generics)| {
+            generics.push(extra_generic.clone());
+
+            let generics_str = generics.to_token_stream().to_string();
+            *generics_lit = parse_quote_spanned! { generics_lit.span() => #generics_str };
+        })
+        .count();
+
+    // If no generic was found, create a new attribute and insert it.
+    if generics_count == 0 && container_generic_count == 0 {
+        let extra_generic_str = extra_generic.to_token_stream().to_string();
+        attrs.push(parse_quote!(generics = #extra_generic_str));
+    }
+
+    attrs
+}
+
 #[cfg(test)]
 mod test {
+    use super::*;
+
     use proc_macro2::Span;
     use syn::Visibility;
-
-    use super::*;
 
     fn test_struct_ir(model: DeriveModel, expected_raw_ident: impl AsRef<str>) {
         let ir = lower(model).unwrap();
@@ -152,5 +233,161 @@ mod test {
 
         assert_eq!(repr, Repr::U32);
         assert_eq!(variants.len(), 3);
+    }
+    mod extend_assert_generics {
+        use syn::parse_quote;
+
+        use super::*;
+
+        #[test]
+        fn single_generic() {
+            assert_eq!(
+                extend_assert_generics(
+                    vec![parse_quote!(generics = "A")],
+                    parse_quote!(SomeIdent),
+                    0,
+                ),
+                [parse_quote!(generics = "A , SomeIdent")]
+            );
+        }
+
+        #[test]
+        fn multi_generic() {
+            assert_eq!(
+                extend_assert_generics(
+                    vec![parse_quote!(generics = "A, u32, Something")],
+                    parse_quote!(SomeIdent),
+                    0,
+                ),
+                [parse_quote!(generics = "A , u32 , Something , SomeIdent")]
+            );
+        }
+
+        #[test]
+        fn multi_with_const_generic() {
+            assert_eq!(
+                extend_assert_generics(
+                    vec![parse_quote!(generics = "123, 'a', A, u32, Something")],
+                    parse_quote!(SomeIdent),
+                    0,
+                ),
+                [parse_quote!(
+                    generics = "123 , 'a' , A , u32 , Something , SomeIdent"
+                )]
+            );
+        }
+
+        mod no_container_generics {
+            use super::*;
+            #[test]
+            fn no_attrs() {
+                assert_eq!(
+                    extend_assert_generics(vec![], parse_quote!(SomeIdent), 0),
+                    [parse_quote!(generics = "SomeIdent")]
+                );
+            }
+
+            #[test]
+            fn other_attrs() {
+                assert_eq!(
+                    extend_assert_generics(
+                        vec![parse_quote!(some_path), parse_quote!(some_key = "value"),],
+                        parse_quote!(SomeIdent),
+                        0,
+                    ),
+                    [
+                        parse_quote!(some_path),
+                        parse_quote!(some_key = "value"),
+                        parse_quote!(generics = "SomeIdent")
+                    ]
+                );
+            }
+
+            #[test]
+            fn namespaced_generics() {
+                assert_eq!(
+                    extend_assert_generics(
+                        vec![
+                            parse_quote!(generics = "T"),
+                            parse_quote!(namespace(generics = "T")),
+                        ],
+                        parse_quote!(SomeIdent),
+                        0,
+                    ),
+                    [
+                        parse_quote!(generics = "T , SomeIdent"),
+                        parse_quote!(namespace(generics = "T , SomeIdent")),
+                    ]
+                );
+            }
+
+            #[test]
+            fn namespaced_no_generics() {
+                assert_eq!(
+                    extend_assert_generics(
+                        vec![parse_quote!(namespace(size = 0))],
+                        parse_quote!(SomeIdent),
+                        0,
+                    ),
+                    [
+                        parse_quote!(namespace(size = 0, generics = "SomeIdent")),
+                        parse_quote!(generics = "SomeIdent"),
+                    ]
+                );
+            }
+        }
+
+        mod with_container_generics {
+            use super::*;
+            #[test]
+            fn no_attrs() {
+                assert_eq!(
+                    extend_assert_generics(vec![], parse_quote!(SomeIdent), 1),
+                    []
+                );
+            }
+
+            #[test]
+            fn other_attrs() {
+                assert_eq!(
+                    extend_assert_generics(
+                        vec![parse_quote!(some_path), parse_quote!(some_key = "value"),],
+                        parse_quote!(SomeIdent),
+                        1,
+                    ),
+                    [parse_quote!(some_path), parse_quote!(some_key = "value"),]
+                );
+            }
+
+            #[test]
+            fn namespaced_generics() {
+                assert_eq!(
+                    extend_assert_generics(
+                        vec![
+                            parse_quote!(generics = "T"),
+                            parse_quote!(namespace(generics = "T")),
+                        ],
+                        parse_quote!(SomeIdent),
+                        1,
+                    ),
+                    [
+                        parse_quote!(generics = "T , SomeIdent"),
+                        parse_quote!(namespace(generics = "T , SomeIdent")),
+                    ]
+                );
+            }
+
+            #[test]
+            fn namespaced_no_generics() {
+                assert_eq!(
+                    extend_assert_generics(
+                        vec![parse_quote!(namespace(size = 0))],
+                        parse_quote!(SomeIdent),
+                        1,
+                    ),
+                    [parse_quote!(namespace(size = 0)),]
+                );
+            }
+        }
     }
 }

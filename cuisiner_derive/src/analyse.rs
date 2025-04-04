@@ -1,5 +1,8 @@
-use proc_macro2::{Span, TokenStream};
-use syn::{Attribute, Error, Expr, ExprLit, Generics, Ident, Lit, Meta, Visibility, parenthesized};
+use proc_macro2::Span;
+use syn::{
+    Attribute, Error, Expr, ExprLit, Generics, Ident, Lit, Meta, Token, Visibility, parenthesized,
+    punctuated::Punctuated,
+};
 
 use crate::{Ast, Fields};
 
@@ -87,7 +90,7 @@ pub enum DeriveModelItem {
         fields: Fields,
         /// Generics present on the original struct.
         generics: Generics,
-        container_assert_layout: Option<TokenStream>,
+        container_assert_layout: Option<Vec<Meta>>,
     },
     Enum {
         /// All variants and their discriminant values.
@@ -102,7 +105,7 @@ pub enum DeriveModelItem {
 #[cfg_attr(test, derive(Debug))]
 struct DeriveConfig {
     repr: Option<Repr>,
-    container_assert_layout: Option<TokenStream>,
+    container_assert_layout: Option<Vec<Meta>>,
 }
 
 #[cfg(test)]
@@ -145,7 +148,11 @@ impl TryFrom<&[Attribute]> for DeriveConfig {
                 if meta.path.is_ident("assert") {
                     let attrs;
                     parenthesized!(attrs in meta.input);
-                    config.container_assert_layout = Some(attrs.parse()?);
+                    config.container_assert_layout = Some(
+                        Punctuated::<_, Token![,]>::parse_terminated(&attrs)?
+                            .into_iter()
+                            .collect(),
+                    );
 
                     return Ok(());
                 }

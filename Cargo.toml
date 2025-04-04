@@ -15,7 +15,7 @@ resolver = "2"
 members = ["cuisiner_derive"]
 
 [workspace.package]
-version = "0.0.5"
+version = "0.0.6"
 edition = "2024"
 authors = ["Tom Anderson <tom@ando.sh>"]
 repository = "https://github.com/andogq/cuisiner"
@@ -26,7 +26,7 @@ categories = ["encoding", "parsing", "rust-patterns"]
 
 [workspace.dependencies]
 cuisiner = { path = "." }
-cuisiner_derive = { path = "cuisiner_derive", version = "0.0.5" }
+cuisiner_derive = { path = "cuisiner_derive", version = "0.0.6" }
 
 [dependencies]
 thiserror = "2.0.12"
